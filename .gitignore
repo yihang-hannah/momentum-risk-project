@@ -1,0 +1,43 @@
+
+# ==========================================
+# Python-generated files
+# ==========================================
+__pycache__/
+*.py[cod]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# ==========================================
+# Virtual environments
+# ==========================================
+.venv/
+
+# ==========================================
+# Development tool caches
+# ==========================================
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ==========================================
+# macOS system files
+# ==========================================
+.DS_Store
+
+# ==========================================
+# Downloaded and processed data
+# ==========================================
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ==========================================
+# Generated figures and tables
+# ==========================================
+outputs/figures/*
+outputs/tables/*
+!outputs/figures/.gitkeep
+!outputs/tables/.gitkeep

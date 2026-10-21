@@ -1,24 +1,34 @@
+"""Reusable monthly momentum strategy implementations.
 
-import pandas as pd
+The paper-replication notebook independently derives and validates the formulas.
+This module encapsulates the validated strategy logic for other experiments.
+"""
+
 import numpy as np
+import pandas as pd
 
-def unmanaged_momentum(
-    monthly_returns: pd.Series,
-) -> pd.Series:
-    """Return the unmanaged momentum strategy returns."""
 
-    if not isinstance(monthly_returns.index, pd.PeriodIndex):
-        raise TypeError("Expected a monthly PeriodIndex")
+def _validate_monthly_series(series: pd.Series, label: str) -> None:
+    """Require a chronologically ordered monthly Series with unique periods."""
+    if not isinstance(series, pd.Series):
+        raise TypeError(f"{label} must be a pandas Series")
+    if not isinstance(series.index, pd.PeriodIndex):
+        raise TypeError(f"{label} must use a monthly PeriodIndex")
+    if series.index.freqstr != "M":
+        raise ValueError(f"{label} must have monthly frequency")
+    if not series.index.is_unique:
+        raise ValueError(f"{label} contains duplicate months")
+    if not series.index.is_monotonic_increasing:
+        raise ValueError(f"{label} must be sorted chronologically")
 
-    if monthly_returns.index.freqstr != "M":
-        raise ValueError("Expected monthly frequency")
 
-    if monthly_returns.isna().any():
-        raise ValueError("Returns contain missing values")
-
+def unmanaged_momentum(monthly_returns: pd.Series) -> pd.Series:
+    """Return an unscaled monthly momentum return series."""
+    _validate_monthly_series(monthly_returns, "Monthly returns")
+    if not np.isfinite(monthly_returns.to_numpy(dtype=float)).all():
+        raise ValueError("Monthly returns must be finite")
     result = monthly_returns.copy()
     result.name = "unmanaged"
-
     return result
 
 
@@ -27,63 +37,71 @@ def volatility_managed_momentum(
     monthly_volatility: pd.Series,
     target_volatility: float = 0.12,
 ) -> pd.DataFrame:
-    """Construct a monthly volatility-managed momentum strategy."""
+    """Apply lagged inverse-volatility exposure to monthly momentum returns.
 
-    if target_volatility <= 0 or not np.isfinite(target_volatility):
+    Parameters
+    ----------
+    monthly_returns : pd.Series
+        Decimal WML returns indexed by monthly PeriodIndex, in calendar order.
+        Months must be consecutive so a one-row shift means one calendar month.
+    monthly_volatility : pd.Series
+        Monthly-unit volatility estimates available at each month-end, indexed
+        by monthly PeriodIndex. Leading NaNs are allowed for the warm-up window.
+        Estimates must not use information from future months.
+    target_volatility : float
+        Annualized target volatility (0.12 means 12% per year).
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: mom, estimated_volatility, weight, managed. ``weight`` is
+        the exposure determined at the PREVIOUS month-end. The first month
+        without a prior forecast has NaN weight and managed return.
+
+    Notes
+    -----
+    Mirrors the independently tested notebook formula:
+    monthly_target = annual_target / sqrt(12)
+    weight[t] = monthly_target / volatility[t-1]
+    managed[t] = weight[t] * WML[t]
+    No leverage cap, transaction costs, or financing charges are imposed.
+    """
+    if not np.isfinite(target_volatility) or target_volatility <= 0:
         raise ValueError("Target volatility must be positive and finite")
 
-    if not isinstance(monthly_returns.index, pd.PeriodIndex):
-        raise TypeError("Expected monthly PeriodIndex for returns")
+    _validate_monthly_series(monthly_returns, "Monthly returns")
+    _validate_monthly_series(monthly_volatility, "Monthly volatility")
 
-    if not isinstance(monthly_volatility.index, pd.PeriodIndex):
-        raise TypeError("Expected monthly PeriodIndex for volatility")
+    if not monthly_returns.empty:
+        expected_months = pd.period_range(
+            monthly_returns.index[0], monthly_returns.index[-1], freq="M"
+        )
+        if not monthly_returns.index.equals(expected_months):
+            raise ValueError("Monthly returns must contain consecutive months")
 
-    if monthly_returns.index.freqstr != "M":
-        raise ValueError("Expected monthly returns")
+    if not np.isfinite(monthly_returns.to_numpy(dtype=float)).all():
+        raise ValueError("Monthly returns must be finite")
 
-    if monthly_volatility.index.freqstr != "M":
-        raise ValueError("Expected monthly volatility")
-
-    if not monthly_returns.index.is_unique:
-        raise ValueError("Duplicate return months detected")
-
-    if not monthly_volatility.index.is_unique:
-        raise ValueError("Duplicate volatility months detected")
-
-    if monthly_returns.isna().any():
-        raise ValueError("Monthly returns contain missing values")
-
-    if not np.isfinite(monthly_returns.to_numpy()).all():
-        raise ValueError("Monthly returns contain non-finite values")
-
-    if np.isinf(monthly_volatility.to_numpy()).any():
+    vol_values = monthly_volatility.to_numpy(dtype=float)
+    if np.isinf(vol_values).any():
         raise ValueError("Volatility contains infinite values")
-
     if (monthly_volatility.dropna() <= 0).any():
         raise ValueError("Volatility estimates must be positive")
 
-    # Align the volatility estimates to the return months
-    aligned_volatility = monthly_volatility.reindex(
-        monthly_returns.index
-    )
+    # Align month-end forecasts with monthly WML return dates.
+    aligned_volatility = monthly_volatility.reindex(monthly_returns.index)
 
-    # Convert annualized target volatility to monthly units
+    # The volatility input is already in monthly units.
     target_monthly = target_volatility / np.sqrt(12)
-
-    # Calculate weights at each month-end
     month_end_weights = target_monthly / aligned_volatility
 
-    # Apply month-end weights to the following month's returns
+    # One calendar-month execution lag; no additional daily lag.
     applied_weights = month_end_weights.shift(1)
-
-    # Calculate managed strategy returns
     managed_returns = applied_weights * monthly_returns
 
-    result = pd.DataFrame({
+    return pd.DataFrame({
         "mom": monthly_returns,
         "estimated_volatility": aligned_volatility,
         "weight": applied_weights,
         "managed": managed_returns,
     })
-
-    return result

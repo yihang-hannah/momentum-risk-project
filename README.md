@@ -2,6 +2,8 @@
 
 ## Current progress
 
+**Latest completed commit:** `ff8eca5` — `feat: complete KF momentum data pipeline and paper replication` (on the former `feature/data-pipeline` branch; rename/push status should be checked on GitHub). This commit contains **Notebook 01, Notebook 02, five Python source modules, and four test files**.
+
 **Work Completed So Far:** momentum data exploration; replication of Barroso and Santa-Clara (2015) using Kenneth French **value-weighted momentum decile P10 − P1**; a 126-trading-day squared-return volatility estimator; lagged volatility-managed exposure; unmanaged/fixed-leverage/managed comparisons; factor regressions; performance reporting; and automated unit tests.
 
 **Key replication results (historical paper-era sample):** unmanaged WML annualized mean **14.86%**, volatility **27.42%**, Sharpe **0.5419**; volatility-managed WML annualized mean **16.69%**, volatility **16.77%**, Sharpe **0.9958**. These are gross historical research outputs, not live trading results.
@@ -89,9 +91,11 @@ To run a notebook, open the repository folder in VS Code, open the `.ipynb` file
 
 Typical workflow: load daily and monthly momentum returns; check date coverage, units, duplicates, missing values, and alignment; explore return distributions and volatility; cache cleaned data locally for reproducible reruns. Review its actual cells for the authoritative list of figures and tables.
 
-**Important distinction:** The reusable `data.py` currently contains a loader for Kenneth French's **2×3 `Mom` factor** (`F-F_Momentum_Factor[_daily]`). This is **not the same series** as the value-weighted momentum decile spread used in the corrected paper replication. Label outputs and caches accordingly; do not substitute one for the other without an explicit methodological explanation.
+**Important distinction:** The project baseline uses the Kenneth French **value-weighted P10 − P1 decile WML**, not the separately published 2×3 `Mom` factor. Use `load_wml_decile_returns()` where available; confirm the shared data-loader changes have been committed before relying on that API in a fresh clone.
 
 ### Notebook 02 — Paper replication (validated core)
+
+**Research/implementation separation:** This notebook independently implements the paper equations for experimentation, diagnostics, and replication. It does **not** need to call `strategies.py`. After the notebook logic is validated, the equivalent production-facing calculations are encapsulated separately in `src/momentum_risk_project/strategies.py`, with unit tests in `tests/test_strategies.py`. The two implementations should agree numerically for identical inputs.
 
 **Purpose:** Reproduce the central result of Barroso and Santa-Clara (2015) using the **value-weighted** P10 − P1 spread from Kenneth French's `10_Portfolios_Prior_12_2` (monthly) and `10_Portfolios_Prior_12_2_Daily` (daily) datasets. Use the corrected decile-WML notebook, not an older draft using the standard `Mom` factor.
 
@@ -145,7 +149,13 @@ print(daily_mom.head())
 print(monthly_mom.head())
 ```
 
-**Caution:** The current `data.py` has two definitions of `load_momentum_returns`; Python uses the **last definition**, with `project_root` and `force_download` parameters. This should be cleaned up in a dedicated maintenance change. The module loads the standard `Mom` factor, **not** Notebook 02's decile WML. Do not claim that the decile pipeline is encapsulated in `data.py` until that API is implemented and tested.
+**Data-source note:** For the paper-replication baseline, use the value-weighted decile spread **P10 − P1**. The standardized `load_wml_decile_returns()` API is intended to supply daily and monthly decile WML; verify it exists on the branch being used before running the example. The legacy `load_momentum_returns()` interface may still be present for compatibility.
+
+```python
+from momentum_risk_project.data import load_wml_decile_returns
+
+daily_wml, monthly_wml = load_wml_decile_returns()
+```
 
 ### `volatility.py` — Historical volatility estimator
 
@@ -163,6 +173,8 @@ The first 125 observations are missing by construction. The function does **not*
 
 ### `strategies.py` — Unmanaged and volatility-managed returns
 
+**Role:** Reusable implementation of the strategy logic independently validated in Notebook 02, not a replacement for the notebook experiments. The module and notebook intentionally keep separate implementations; changes to the formula should be validated in the notebook first, then ported here and covered by tests.
+
 `unmanaged_momentum(monthly_returns)` validates a complete monthly `PeriodIndex` return series and returns a copy named `unmanaged`.
 
 `volatility_managed_momentum(monthly_returns, monthly_volatility, target_volatility=0.12)` accepts monthly `PeriodIndex` series and returns columns `mom`, `estimated_volatility`, `weight`, and `managed`. The `weight` column is the **applied previous-month weight**.
@@ -179,6 +191,8 @@ result = volatility_managed_momentum(
 )
 print(result[["weight", "managed"]].tail())
 ```
+
+**Input requirements:** Both inputs must be monthly `pd.Series` with a chronologically increasing, unique `PeriodIndex` (`freq="M"`). Monthly returns must cover consecutive calendar months and contain only finite values. Volatility estimates must be in **monthly units** (not annualized), with positive finite observations; leading `NaN` values are allowed during the warm-up period. The `target_volatility` parameter is **annualized** and is converted internally by dividing by `sqrt(12)`. The weight for month `t` uses the volatility observed at the end of month `t-1` (`shift(1)` exactly once).
 
 The module does **not** automatically cap leverage, model margin, or subtract transaction costs. Apply such rules explicitly in a separately tested extension.
 

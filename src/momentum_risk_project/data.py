@@ -1,3 +1,4 @@
+
 from pathlib import Path
 
 import numpy as np
@@ -10,8 +11,8 @@ RAW_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 DATASET_NAMES = {
-    "daily": "F-F_Momentum_Factor_daily",
-    "monthly": "F-F_Momentum_Factor",
+    "daily": "10_Portfolios_Prior_12_2_Daily",
+    "monthly": "10_Portfolios_Prior_12_2",
 }
 
 
@@ -28,7 +29,7 @@ def download_momentum(frequency: str) -> pd.DataFrame:
     result = web.DataReader(
         DATASET_NAMES[frequency],
         "famafrench",
-        start="1963-01-01",
+        start="1926-01-01",
     )
 
     return result[0]
@@ -41,14 +42,17 @@ def clean_momentum(
     """Clean and standardize raw momentum returns."""
     validate_frequency(frequency)
 
-    if "Mom" not in df.columns:
-        raise ValueError("Missing required column: Mom")
+    if df.shape[1] != 10:
+        raise ValueError("Expected exactly ten momentum decile columns")
 
-    cleaned = df[["Mom"]].copy()
-    cleaned = cleaned.rename(columns={"Mom": "mom"})
-
-    # Convert percentage returns to decimal returns
-    cleaned["mom"] = cleaned["mom"] / 100
+    # Kenneth French table 0: value-weighted deciles, low to high.
+    loser = pd.to_numeric(df.iloc[:, 0], errors="coerce")
+    winner = pd.to_numeric(df.iloc[:, -1], errors="coerce")
+    if loser.isna().any() or winner.isna().any():
+        raise ValueError("Non-numeric or missing decile returns detected")
+    if (loser <= -90).any() or (winner <= -90).any():
+        raise ValueError("Missing-return sentinel detected in momentum deciles")
+    cleaned = ((winner - loser) / 100.0).to_frame(name="mom")
 
     if frequency == "daily":
         if isinstance(cleaned.index, pd.PeriodIndex):
@@ -116,13 +120,13 @@ def validate_cleaned_data(
 def raw_path(frequency: str) -> Path:
     """Return the raw CSV file path."""
     validate_frequency(frequency)
-    return RAW_DIR / f"momentum_{frequency}.csv"
+    return RAW_DIR / f"kf_deciles_{frequency}_vw.csv"
 
 
 def processed_path(frequency: str) -> Path:
     """Return the processed Parquet file path."""
     validate_frequency(frequency)
-    return PROCESSED_DIR / f"01_momentum_{frequency}.parquet"
+    return PROCESSED_DIR / f"kf_wml_deciles_{frequency}_vw.parquet"
 
 
 def save_raw_data(
@@ -174,10 +178,7 @@ def read_processed_data(
 def load_momentum_returns(
     refresh: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load cached returns or download, validate, and save missing datasets.
-
-    Set refresh=True to redownload both frequencies.
-    """
+    """Load daily and monthly KF value-weighted decile P10-P1 returns."""
     datasets = {}
 
     for frequency in ("daily", "monthly"):
@@ -196,3 +197,9 @@ def load_momentum_returns(
         datasets[frequency] = cleaned
 
     return datasets["daily"], datasets["monthly"]
+
+
+def load_wml_decile_returns(refresh: bool = False) -> tuple[pd.Series, pd.Series]:
+    """Return daily and monthly KF value-weighted P10-P1 as `wml` Series."""
+    daily, monthly = load_momentum_returns(refresh=refresh)
+    return daily["mom"].rename("wml"), monthly["mom"].rename("wml")

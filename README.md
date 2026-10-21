@@ -2,8 +2,6 @@
 
 ## Current progress
 
-**Latest completed commit:** `ff8eca5` — `feat: complete KF momentum data pipeline and paper replication` (on the former `feature/data-pipeline` branch; rename/push status should be checked on GitHub). This commit contains **Notebook 01, Notebook 02, five Python source modules, and four test files**.
-
 **Work Completed So Far:** momentum data exploration; replication of Barroso and Santa-Clara (2015) using Kenneth French **value-weighted momentum decile P10 − P1**; a 126-trading-day squared-return volatility estimator; lagged volatility-managed exposure; unmanaged/fixed-leverage/managed comparisons; factor regressions; performance reporting; and automated unit tests.
 
 **Key replication results (historical paper-era sample):** unmanaged WML annualized mean **14.86%**, volatility **27.42%**, Sharpe **0.5419**; volatility-managed WML annualized mean **16.69%**, volatility **16.77%**, Sharpe **0.9958**. These are gross historical research outputs, not live trading results.

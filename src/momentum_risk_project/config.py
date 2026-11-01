@@ -1,6 +1,6 @@
 """Validated shared settings; unsupported scientific changes fail explicitly."""
 from pathlib import Path
-import copy, hashlib, json
+import copy, hashlib, json, os
 import numpy as np
 import pandas as pd
 import yaml
@@ -47,5 +47,11 @@ def config_digest(config):
     return hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest()
 
 
-def configured_path(config,key,root=None):
-    return project_path(config["paths"][key],root)
+def configured_path(config, key, root=None):
+    if key in ("raw_cache", "daily_cache"):
+        external_cache = os.environ.get("MOMENTUM_CRSP_CACHE")
+
+        if external_cache:
+            return Path(external_cache).expanduser().resolve()
+
+    return project_path(config["paths"][key], root)

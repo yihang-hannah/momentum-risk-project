@@ -75,6 +75,7 @@ def test_factor_tests_match_independent_ols_and_hac():
 
 
 def test_dataset_staging_and_signature_reuse_without_raw_edits(tmp_path,monkeypatch):
+    monkeypatch.delenv("MOMENTUM_CRSP_CACHE", raising=False)
     from momentum_risk_project import pipeline
     from momentum_risk_project.wml_pipeline import MONTHLY_COLUMNS
     from test_wml_pipeline import bundle
@@ -141,6 +142,7 @@ def test_scope_export_filters_overlap_and_extension(tmp_path,monkeypatch):
     assert list(b.window)==['extension_disjoint']
 
 def test_shared_crsp_cache_downloaded_once(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOMENTUM_CRSP_CACHE", raising=False)
     import json
 
     from momentum_risk_project import pipeline
@@ -195,3 +197,22 @@ def test_shared_crsp_cache_downloaded_once(tmp_path, monkeypatch):
     pipeline.get_data(config, tmp_path, download=True)
 
     assert len(calls) == 1
+
+def test_external_crsp_cache_override(tmp_path, monkeypatch):
+    from momentum_risk_project.config import load_config, configured_path
+
+    config = load_config()
+    external = tmp_path / "external_crsp_cache"
+
+    monkeypatch.setenv("MOMENTUM_CRSP_CACHE", str(external))
+
+    assert configured_path(config, "raw_cache", tmp_path) == external.resolve()
+    assert configured_path(config, "daily_cache", tmp_path) == external.resolve()
+
+    # Other paths must remain inside the project.
+    assert configured_path(config, "stock_inputs", tmp_path) == (
+        tmp_path / config["paths"]["stock_inputs"]
+    )
+    assert configured_path(config, "results", tmp_path) == (
+        tmp_path / config["paths"]["results"]
+    )

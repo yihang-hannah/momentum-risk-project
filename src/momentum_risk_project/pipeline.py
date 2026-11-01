@@ -63,7 +63,10 @@ def build_dataset(config,root, *, force=False):
     root=project_root(root);raw=configured_path(config,"raw_cache",root)
     stage=configured_path(config,"stock_inputs",root);stage.mkdir(parents=True,exist_ok=True)
     source=[raw/(x+".parquet") for x in ["monthly_enriched","delists","price_gap_intervals"]]
-    expected={str(p.relative_to(root)):file_sha256(p) for p in source}
+    expected = {
+    str(p.relative_to(raw)): file_sha256(p)
+    for p in source
+}
     staged=stage/"staging_manifest.json"
     valid=False
     if staged.exists():

@@ -2,7 +2,7 @@
 
 ## Current progress
 
-**Updated 2026-11-01 — local working-tree status.** Notebooks 03–05 and their reusable modules are implemented and executed locally; this does not imply that they have been committed, pushed, or merged. Notebook 02 remains identical to the checked GitHub-main baseline (`1437301c19cbffb787c253a5f3b9a7727eca3dae`). The latest full test run passed **93 tests**.
+**Updated 2026-11-01.** Notebooks 03–05 and their reusable modules were implemented, executed, and published to both `yihangguo` and `main` in commit `f7965a4`. The next planned work is a frontend MVP and parallel EWMA/GARCH research extensions; those extensions are not implemented yet. Notebook 02 remains identical to the checked GitHub-main baseline (`1437301c19cbffb787c253a5f3b9a7727eca3dae`). The latest full test run passed **93 tests**.
 
 - **Notebook 03 — Stock-level WML construction:** current CRSP formation/price-quality screens, missing-return and delisting policies, monthly/daily reconstruction, KF comparisons, source audits and a fingerprinted reusable build are implemented. Ordinary missing stock returns use the accepted zero assumption; unknown terminal payoffs remain unresolved in the strict policy.
 - **Notebook 04 — Cost-aware backtest lab:** the factor-level backtest is unpacked into explanatory cells and reconciled against the reusable engine. Its turnover is a factor-scaling proxy, not constituent-stock turnover.
@@ -46,7 +46,7 @@ momentum-risk-project/
 └── outputs/                    # Latest notebook reports; see outputs/README.md
 ```
 
-This is the current local layout, including work not yet published to GitHub. `wml.py` is the earlier stock-level utility; **`wml_pipeline.py` is the authoritative Notebook 03 construction API used by Notebook 05**. Licensed raw data and processed stock artifacts are Git-ignored and are not supplied by a fresh clone. Read [data/README.md](data/README.md) and [outputs/README.md](outputs/README.md) before regenerating or cleaning files.
+The source modules and Notebooks 03–05 in this layout were published in `f7965a4`; local research data and generated reports remain separate. `wml.py` is the earlier stock-level utility; **`wml_pipeline.py` is the authoritative Notebook 03 construction API used by Notebook 05**. Licensed raw data and processed stock artifacts are Git-ignored and are not supplied by a fresh clone. Read [data/README.md](data/README.md) and [outputs/README.md](outputs/README.md) before regenerating or cleaning files.
 
 ## 3. Required software and first-time setup
 
@@ -405,6 +405,80 @@ Remember: `ieor4576` is the **remote alias**; `momentum-risk-project` is the **G
 - Add or update unit tests when changing a reusable function; run `uv run pytest tests/ -v`.
 - Keep licensed data, personal credentials, virtual environments, and large outputs out of Git.
 - Document changed inputs, assumptions, output tables, and known limitations in your PR.
+
+## 9. Next work: frontend MVP and two volatility extensions
+
+**Suggested division of work, to be confirmed by the team:** I will first complete the frontend MVP. One teammate can take EWMA and the other GARCH. Keep the current historical estimator as the baseline and Notebook 02 unchanged. The model names, files and interfaces below are **proposed additions**, not currently available APIs or CLI options.
+
+### Frontend MVP — current maintainer
+
+Build a small Streamlit interface in a new `app/streamlit_app.py`, calling the existing package rather than copying notebook calculations. Start with the available baseline and verified local results: select the evaluation window, KF/rebuilt reference, unmanaged/managed strategy and transaction-cost scenario; display wealth, drawdown, performance and stock turnover with the relevant coverage qualifications. Label precomputed views and any live recalculation distinctly. Add a risk-model selector when the teammates' extensions are integrated. Keep WRDS acquisition outside the UI; licensed stock data must already be present locally for live stock backtests.
+
+Planned launch after the app file exists:
+
+```bash
+uv run streamlit run app/streamlit_app.py
+```
+
+### Shared model contract — agree before implementation
+
+**Change only the volatility estimator in the first experiment.** Reuse KF daily decile WML from `data.py` for risk input initially; this public series avoids confusing model changes with unresolved own-stock daily data. Compare historical, EWMA and GARCH risk weights on the same KF monthly returns first. Then apply each set of weights to the same Notebook 03 published-reference holdings via `build.backtest`, keeping membership, valuation policy, cost rates and target volatility fixed. Label that second experiment as rebuilt monthly WML with **KF-based model risk**, not an independent stock-risk replication.
+
+Each new module should expose the following proposed interface, returning forecasts known at the specified **forecast-origin month-end**:
+
+```python
+# Proposed functions to be implemented in ewma.py and garch.py respectively.
+forecast_month_end(daily_returns, origin_months, **model_parameters) -> pd.DataFrame
+```
+
+- Input: decimal simple daily WML returns with a unique sorted `DatetimeIndex`, plus a monthly `PeriodIndex` of forecast-origin months. Use the full available history before the evaluation period for warm-up, not just dates inside the chosen evaluation window.
+- Output: one row per requested origin month, with `monthly_sigma` (decimal, positive, MONTHLY units), `forecast_available` (boolean) and `reason` (warm-up, gap, fit failure, or success). Use the final actual trading date of each origin month; preserve unavailable estimates as NaN.
+- Compute target weight as `(0.12 / sqrt(12)) / monthly_sigma`; relabel origin month `m` to holding month `m + 1` **once**. `build.backtest` consumes these already applied holding-month weights and performs no further signal lag. In contrast, `strategies.volatility_managed_momentum` expects unshifted origin-month sigma and shifts internally: do not combine both shifts.
+- Keep target 12% annualized, monthly execution and financing zero for the first comparison. Apply the same leverage policy and stock-cost assumptions across models. Do not optimize model parameters on 2012–2025 evaluation performance.
+- Missing daily observations must not be dropped in a way that compresses trading time or silently carries the model through a gap. State the gap/reinitialization rule; until explicitly supported, return unavailable for affected forecasts. Do not replace missing risk weights with cash or silently fall back to the historical model.
+
+### Teammate A — EWMA
+
+Create **`src/momentum_risk_project/ewma.py`**, **`tests/test_ewma.py`** and an English **`notebooks/06_ewma_extension.ipynb`**. Keeping the estimator in its own module avoids both teammates editing `volatility.py` or the stock-account code.
+
+Start with a zero-mean squared-return recursion. At an origin date `d`, update the next-session variance using `v_next = lambda * v_previous + (1 - lambda) * r_d**2`, then use `monthly_sigma = sqrt(21 * v_next)`. A reasonable initial experiment is configurable `lambda=0.94` with 126 valid sessions of warm-up; this is a research setting, not a paper requirement. Document the initial variance/recursion seed explicitly. If using pandas, `ewm(alpha=1-lambda, adjust=False)` implements a recursive weighted mean; `ewm().std()` is a different estimator and must not be substituted without documenting that change. Confirm initialization and missing-value behavior against the [official pandas EWM documentation](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.ewm.html).
+
+Show forecast/weight paths, gross and net strategy metrics, turnover/cost changes and coverage against the historical baseline on exactly matched dates. Include hand-calculated recursion, warm-up, invalid-parameter, missing-data and future-perturbation tests. Save new reports under `outputs/06_ewma/`, with settings and source fingerprints, rather than overwriting Notebook 05.
+
+### Teammate B — GARCH
+
+Create **`src/momentum_risk_project/garch.py`**, **`tests/test_garch.py`** and an English **`notebooks/07_garch_extension.ipynb`**. The `arch` dependency is already declared; use the version resolved by `uv.lock`.
+
+Start with zero-mean Gaussian GARCH(1,1). Refit at each forecast-origin month-end using only prior/then-current observations, with a configurable rolling training window (proposed maximum 1,260 sessions, minimum 252). This training requirement can shorten the usable historical sample; report the actual start and compare all models on the same complete contiguous sample. These training choices are proposed experiment settings, not paper specifications.
+
+For numerical scaling, fit `100 * daily_returns`. Obtain a 21-step analytical residual-variance forecast at the origin, sum its 21 daily variances, divide by `100**2`, and take the square root for monthly sigma. Under the zero-mean specification this aggregates forecast innovations without adding cross-day return covariance. Do not use the in-sample `conditional_volatility` as the next-month forecast or estimate parameters once on the full evaluation history. Check optimizer convergence, valid positive variance and admissible parameters; record failed fits as unavailable. Use the [official arch forecasting guide](https://arch.readthedocs.io/en/latest/univariate/forecasting.html) for horizon/origin alignment and variance units.
+
+Include tests for origin-date information boundaries, deterministic repeatability, scale conversion, warm-up and failed fits, plus checks that forecasts depend only on the fitted history. Export forecasts and convergence diagnostics so an apparent performance improvement can be checked against model coverage. Save results under `outputs/07_garch/`, without changing Notebook 05 outputs.
+
+### Integration and acceptance checks
+
+The maintainer will integrate the two estimator outputs through a new **`src/momentum_risk_project/risk_models.py`** adapter after the interfaces are agreed. Until then, each teammate should produce the same origin-month forecast schema in their own module/notebook. `volatility.historical_volatility` and `wml_pipeline.estimate_risk` remain the existing baseline references. `scripts/run_stock_cost_study.py` currently hardcodes baseline KF weights; **it does not yet accept EWMA/GARCH options**. Add a separate `scripts/run_risk_model_study.py` runner at integration time, with separate output directories, rather than changing the meaning of the saved baseline study.
+
+For stock-cost evaluation, reuse **`WMLBuild.backtest` → `stock_backtest.simulate_stock_account`**, **`paper_turnover.appendix_b_turnover`** and **`metrics.performance_metrics`**. Do not replace stock costs with Notebook 04's factor-scaling proxy. Each account needs a complete consecutive monthly weight series; if a model has internal gaps, report them and use an explicitly identified common contiguous episode for comparisons, not a stitched wealth path across dropped months. Monthly-formed portfolios and existing delisting/zero-gap policies stay fixed.
+
+Use the three existing windows as requested evaluation ranges: 1927-05–2011-12, the separate 1951-03–2010-12 turnover check, and 2012-01–2025-12 extension. If GARCH warm-up or another model's coverage prevents a complete requested window, clearly distinguish full-window unavailability from a shorter matched comparison and list the exact dates/month count. Keep extension tuning separate from evaluation.
+
+Each teammate's deliverable should include the estimator, synthetic tests, an executed English notebook, a short explanation of model assumptions, exact evaluation coverage, gross/net metrics, wealth/drawdown and exposure charts, stock turnover/costs where licensed holdings are available, and a parameter/input manifest. Reconstructed-stock data are not in Git; start with the public KF loader (`load_wml_decile_returns`) and coordinate licensed-cache access before attempting stock backtests.
+
+After creating the proposed files, validate your own extension and the existing suite:
+
+```bash
+uv sync --frozen
+# EWMA owner, once implemented:
+uv run pytest tests/test_ewma.py -q
+# GARCH owner, once implemented:
+uv run pytest tests/test_garch.py -q
+# Both:
+uv run pytest -p no:cacheprovider tests/ -q
+```
+
+Work on your own named branch, starting from the latest `ieor4576/main` as described above. Submit changes for review; do not merge overlapping interface edits or alter Notebook 02's replication. The frontend can then use the common adapter without depending on notebook execution.
+
 
 ---
 

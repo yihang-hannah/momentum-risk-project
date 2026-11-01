@@ -40,3 +40,25 @@ def test_current_extractor_default_dates(monkeypatch,tmp_path):
     monkeypatch.setattr(source,'download_cache',lambda *a,**k:calls.append(k))
     source.main(['--cache-dir',str(tmp_path/'new')])
     assert calls[0]['start']=='1925-12-01' and calls[0]['end']=='2025-12-31'
+
+def test_download_cache_accepts_empty_directory(tmp_path, monkeypatch):
+    from momentum_risk_project.wrds_stock import download_cache
+
+    cache = tmp_path / "crsp_cache"
+    cache.mkdir()
+
+    class StopBeforeConnection(Exception):
+        pass
+
+    def fake_connect():
+        raise StopBeforeConnection()
+
+    monkeypatch.setattr(
+        "momentum_risk_project.wrds_stock.connect_readonly",
+        fake_connect,
+    )
+
+    with pytest.raises(StopBeforeConnection):
+        download_cache(cache, resume=True)
+
+    assert (cache / "cache_manifest.json").exists()

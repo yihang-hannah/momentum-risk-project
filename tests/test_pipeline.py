@@ -85,7 +85,7 @@ def test_dataset_staging_and_signature_reuse_without_raw_edits(tmp_path,monkeypa
     pd.DataFrame({'permno':[1]}).to_parquet(raw/'delists.parquet',index=False)
     pd.DataFrame({'permno':[1]}).to_parquet(raw/'price_gap_intervals.parquet',index=False)
     fingerprints={p.name:file_sha256(p) for p in raw.glob('*.parquet')}
-    daily=tmp_path/c['paths']['daily_cache'];daily.mkdir(parents=True)
+    daily=tmp_path/c['paths']['daily_cache'];daily.mkdir(parents=True, exist_ok=True)
     (daily/'cache_manifest.json').write_text('{}')
     for key,freq in [('kf_daily','daily'),('kf_monthly','monthly')]:
         f=pd.DataFrame(1.,index=pd.bdate_range('2000-01-01',periods=2) if freq=='daily' else pd.period_range('2000-01',periods=2,freq='M'),columns=range(10))
@@ -139,3 +139,59 @@ def test_scope_export_filters_overlap_and_extension(tmp_path,monkeypatch):
     b=pd.read_csv(base/'extension/tables/stock_costs/metrics.csv')
     assert set(a.window)=={'paper_available_common','paper_turnover_test'}
     assert list(b.window)==['extension_disjoint']
+
+def test_shared_crsp_cache_downloaded_once(tmp_path, monkeypatch):
+    import json
+
+    from momentum_risk_project import pipeline
+    from momentum_risk_project.config import load_config, configured_path
+    from momentum_risk_project.wml_pipeline import file_sha256
+
+    config = load_config()
+    assert config["paths"]["raw_cache"] == config["paths"]["daily_cache"]
+
+    # Prepare valid public input files.
+    from test_wml_pipeline import bundle
+
+    for key, freq in [("kf_daily", "daily"), ("kf_monthly", "monthly")]:
+        path = configured_path(config, key, tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        index = (
+            pd.bdate_range("2000-01-01", periods=2)
+            if freq == "daily"
+            else pd.period_range("2000-01", periods=2, freq="M")
+        )
+        pd.DataFrame(1.0, index=index, columns=range(10)).to_parquet(path)
+
+    ff = configured_path(config, "ff3", tmp_path)
+    ff.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {"Mkt-RF": [0.01], "SMB": [0.0], "HML": [0.0], "RF": [0.0]},
+        index=pd.period_range("2000-01", periods=1, freq="M"),
+    ).to_parquet(ff)
+
+    calls = []
+
+    def fake_download(cache, **kwargs):
+        calls.append(cache)
+        cache.mkdir(parents=True, exist_ok=True)
+
+        file = cache / "sample.parquet"
+        file.write_bytes(b"test fixture")
+
+        manifest = {
+            "status": "complete",
+            "files": {
+                "sample": {"sha256": file_sha256(file)}
+            },
+        }
+        (cache / "cache_manifest.json").write_text(json.dumps(manifest))
+
+    monkeypatch.setattr(
+        "momentum_risk_project.wrds_stock.download_cache",
+        fake_download,
+    )
+
+    pipeline.get_data(config, tmp_path, download=True)
+
+    assert len(calls) == 1

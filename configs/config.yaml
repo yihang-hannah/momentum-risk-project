@@ -2,7 +2,7 @@
 seed: 4576
 paths:
   raw_cache: data/raw/03_stock_full_20261031
-  daily_cache: data/raw/03_quality_daily_20261031
+  daily_cache: data/raw/03_stock_full_20261031
   stock_inputs: data/interim/stock_inputs
   build: data/processed/wml_current
   study: data/processed/stock_study

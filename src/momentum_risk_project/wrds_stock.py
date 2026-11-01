@@ -20,20 +20,63 @@ PRICE_GAP_SQL = "WITH calendar AS (\n SELECT caldt,row_number() OVER (ORDER BY c
 
 
 def connect_readonly():
-    entries=[]
-    path=Path.home()/'.pgpass'
-    if path.exists():
+    """Connect to WRDS using existing PostgreSQL credentials."""
+    import os
+
+    home = Path.home()
+
+    credential_paths = []
+
+    # Respect an explicitly configured PostgreSQL password file.
+    if os.environ.get("PGPASSFILE"):
+        credential_paths.append(Path(os.environ["PGPASSFILE"]))
+
+    # Standard PostgreSQL credential locations.
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            credential_paths.append(
+                Path(appdata) / "postgresql" / "pgpass.conf"
+            )
+
+    credential_paths.append(home / ".pgpass")
+
+    for path in credential_paths:
+        if not path.is_file():
+            continue
+
         for line in path.read_text().splitlines():
-            if line and not line.startswith('#'):
-                fields=line.split(':',4)
-                if len(fields)==5 and 'wrds' in fields[0].lower():entries.append(fields[:4])
-    if not entries:
-        raise RuntimeError('An existing WRDS login configuration is required; no credentials are stored by this tool')
-    host,port,database,username=entries[0]
-    return psycopg2.connect(host=host,port=port if port!='*' else '9737',
-       dbname=database if database!='*' else 'wrds',user=username,connect_timeout=20,
-       application_name='momentum_research_readonly',
-       options='-c default_transaction_read_only=on -c statement_timeout=600000')
+            if not line or line.startswith("#"):
+                continue
+
+            fields = line.split(":", 4)
+
+            if len(fields) != 5:
+                continue
+
+            host, port, database, username, _ = fields
+
+            if "wrds" not in host.lower():
+                continue
+
+            return psycopg2.connect(
+                host=host,
+                port=port if port != "*" else "9737",
+                dbname=database if database != "*" else "wrds",
+                user=username,
+                connect_timeout=20,
+                application_name="momentum_research_readonly",
+                options=(
+                    "-c default_transaction_read_only=on "
+                    "-c statement_timeout=600000"
+                ),
+                passfile=str(path),
+            )
+
+    raise RuntimeError(
+        "WRDS credentials not found. Configure PostgreSQL "
+        ".pgpass (Unix) or pgpass.conf (Windows), or set PGPASSFILE."
+    )
 
 
 def _hash(path):
@@ -87,12 +130,29 @@ def extraction_queries(start, end):
     return {name:expand(sql) for name,sql in {**QUERIES,'price_gap_intervals':PRICE_GAP_SQL}.items()}
 
 
-def download_cache(cache_dir,*,resume=False,start='1925-12-01',end='2025-12-31',progress=print):
-    root=Path(cache_dir)
-    manifest_path=root/'cache_manifest.json'
-    if root.exists() and (not resume or not manifest_path.exists()):
-        raise FileExistsError('Use a new cache directory, or --resume for a documented interrupted extraction')
-    root.mkdir(parents=True,exist_ok=True)
+def download_cache(cache_dir, *, resume=False, start='1925-12-01',
+                   end='2025-12-31', progress=print):
+    root = Path(cache_dir)
+    manifest_path = root / 'cache_manifest.json'
+
+    if root.exists():
+        if not root.is_dir():
+            raise FileExistsError(
+                f"Cache path exists but is not a directory: {root}"
+            )
+
+        if not manifest_path.exists():
+            if any(root.iterdir()):
+                raise FileExistsError(
+                    "Cache directory contains files but has no manifest; "
+                    "use a new directory rather than mixing unverified data"
+                )
+        elif not resume:
+            raise FileExistsError(
+                "Existing cache requires --resume"
+            )
+
+    root.mkdir(parents=True, exist_ok=True)
     if manifest_path.exists():
         manifest=json.loads(manifest_path.read_text())
     else:

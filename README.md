@@ -2,7 +2,7 @@
 
 ## Current progress
 
-**Updated 2026-11-01.** Notebooks 03–05 and their reusable modules were implemented, executed, and published to both `yihangguo` and `main` in commit `f7965a4`. The next planned work is a frontend MVP and parallel EWMA/GARCH research extensions; those extensions are not implemented yet. Notebook 02 remains identical to the checked GitHub-main baseline (`1437301c19cbffb787c253a5f3b9a7727eca3dae`). The latest full test run passed **93 tests**.
+**Updated 2026-11-01.** Notebooks 03–05 and their reusable modules were implemented, executed, and published to both `yihangguo` and `main` in commit `f7965a4`. The next planned work is a frontend MVP and parallel EWMA/GARCH research extensions; those extensions are not implemented yet. The latest Notebooks 01–05 append packaged-API quick starts and notebook-specific terminal test commands. The new examples distinguish factor-proxy costs from stock-account costs and check agreement with the relevant notebook or saved study results. Notebook 02 retains all original replication cells and outputs from the checked baseline (`1437301c19cbffb787c253a5f3b9a7727eca3dae`); only its final reuse guide is new. The latest full test run passed **93 tests**.
 
 - **Notebook 03 — Stock-level WML construction:** current CRSP formation/price-quality screens, missing-return and delisting policies, monthly/daily reconstruction, KF comparisons, source audits and a fingerprinted reusable build are implemented. Ordinary missing stock returns use the accepted zero assumption; unknown terminal payoffs remain unresolved in the strict policy.
 - **Notebook 04 — Cost-aware backtest lab:** the factor-level backtest is unpacked into explanatory cells and reconciled against the reusable engine. Its turnover is a factor-scaling proxy, not constituent-stock turnover.
@@ -98,6 +98,8 @@ Typical workflow: load daily and monthly momentum returns; check date coverage, 
 
 **Important distinction:** The project baseline uses the Kenneth French **value-weighted P10 − P1 decile WML**, not the separately published 2×3 `Mom` factor. Use `load_wml_decile_returns()` where available; confirm the shared data-loader changes have been committed before relying on that API in a fresh clone.
 
+**Final reuse guide:** the last section demonstrates the Series-based `load_wml_decile_returns` API, distinguishes it from the DataFrame loader, explains canonical cache names and refresh behavior, and checks agreement with the explored inputs.
+
 ### Notebook 02 — Paper replication (validated core)
 
 **Research/implementation separation:** This notebook independently implements the paper equations for experimentation, diagnostics, and replication. It does **not** need to call `strategies.py`. After the notebook logic is validated, the equivalent production-facing calculations are encapsulated separately in `src/momentum_risk_project/strategies.py`, with unit tests in `tests/test_strategies.py`. The two implementations should agree numerically for identical inputs.
@@ -138,9 +140,11 @@ w_{t-1}=\frac{0.12/\sqrt{12}}{\widehat{\sigma}_{WML,t-1}},
 
 The uncapped leverage reached approximately 2.094× and exceeded 2× in only two months. These are historical replication outputs, **not** out-of-sample performance or evidence of a tradable net-of-cost strategy. Data-library updates can change exact values.
 
+**Final reuse guide:** the appended section calls `historical_volatility`, `volatility_managed_momentum`, `unmanaged_momentum` and `performance_metrics`, checks all four strategy return series and core metrics against the independent notebook calculations, and explains the single execution lag and downstream cost APIs. The original replication cells and outputs are preserved.
+
 ### Notebook 03 — Stock-level WML construction and KF reconciliation
 
-[Open Notebook 03](notebooks/03_wml_construction.ipynb). **Status:** implemented and executed; the strict valuation and independent daily-risk gaps below remain unresolved.
+[Open Notebook 03](notebooks/03_wml_construction.ipynb). **Status:** implemented and executed; the strict valuation and independent daily-risk gaps below remain unresolved. Its opening specification now lists raw WRDS tables/fields and local cache lineage, point-in-time classifications, formation/t-13 price quality, ranking/ties/weights, both valuation policies, delisting inclusion, daily flags and calendar/gap handling, lagged risk, account conventions, validation and official source links. It explicitly separates documented provider/research rules from project assumptions.
 
 - Reconstruct monthly value-weighted deciles from WRDS CRSP CIZ data using historical ordinary-share/exchange eligibility, NYSE momentum breakpoints and prior-month capitalization. Apply the current period-end price/date quality screens at formation and t-13; stale last-available quotes are not treated as observed month-end prices.
 - Use the documented KF 12-2 ranking screen, with the CIZ/legacy missing-code correspondence explicitly qualified. Ordinary holding-period stock-return gaps are zero under the accepted research assumption, not claimed as a fully documented KF rule.

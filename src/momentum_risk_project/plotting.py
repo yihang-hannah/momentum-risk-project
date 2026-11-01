@@ -25,7 +25,7 @@ def stock_study_figures(gross,frames,weights,windows,output):
         axes[1,col].set(ylabel="10bp funded-account drawdown (%)")
         axes[0,col].grid(alpha=.2);axes[1,col].grid(alpha=.2)
     axes[0,0].legend(fontsize=7);axes[1,0].legend(fontsize=7)
-    fig.suptitle("Conditional published-return stock reference: shared KF risk weights",fontsize=14)
+    fig.suptitle("Independent risk weights: reconstructed WML vs KF benchmark",fontsize=14)
     fig.savefig(output/"wealth_and_drawdown.png",dpi=160);plt.close(fig)
     fig,axes=plt.subplots(1,len(windows),figsize=(max(8,5*len(windows)),4),layout="constrained",squeeze=False)
     for ax,(window,(a,z)) in zip(axes[0],windows.items()):

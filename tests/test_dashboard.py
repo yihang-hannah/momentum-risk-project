@@ -18,10 +18,10 @@ def dashboard_root(tmp_path):
     folder=tmp_path/c['paths']['study'];folder.mkdir(parents=True)
     months=pd.period_range('2000-01',periods=6,freq='M',name='month')
     u=np.array([-.02,.01,.03,.015,-.01,.02]);m=.6*u+.005
-    gross=pd.DataFrame({'KF unmanaged':u+.001,'Rebuilt reference unmanaged':u,'KF managed':m+.001,'Rebuilt reference managed':m},index=months)
+    gross=pd.DataFrame({'KF unmanaged':u+.001,'Rebuilt unmanaged':u,'KF managed':m+.001,'Rebuilt managed':m},index=months)
     gross.to_csv(folder/'gross_reference_returns.csv')
     ledgers=[];appendix=[];metric_rows=[]
-    for name,r,weight in [('unmanaged',u,1.),('managed_shared_KF_risk',m,.6)]:
+    for name,r,weight in [('unmanaged',u,1.),('managed_own_risk',m,.6)]:
         for cost in c['costs']['transaction_cost_bps']:
             x=1/(1+2*cost/10000);net=x*(1+r)-1;ends=np.cumprod(1+net)
             f=pd.DataFrame({'month':months,'factor_weight':weight,'state':'ok','gross_factor_return':r,'net_return':net,
@@ -37,7 +37,7 @@ def dashboard_root(tmp_path):
     pd.concat(ledgers).to_csv(folder/'funded_monthly.csv',index=False)
     pd.concat(appendix).to_csv(folder/'appendix_monthly.csv',index=False)
     pd.DataFrame(metric_rows).to_csv(folder/'metrics.csv',index=False)
-    coverage=pd.DataFrame([{'window':w,'months':len(pd.period_range(a,z,freq='M')),'own_stock_risk_forecasts':0,
+    coverage=pd.DataFrame([{'window':w,'months':len(pd.period_range(a,z,freq='M')),'own_stock_risk_forecasts':len(pd.period_range(a,z,freq='M')),'strict_stock_risk_forecasts':0,
         'strict_DM_monthly_returns':1,'strict_continuous_account_known_months':0,'cash_fill_used':False} for w,(a,z) in c['windows'].items()])
     coverage.to_csv(folder/'coverage.csv',index=False)
     pd.DataFrame({'window':list(c['windows']),'value':[1.,1.,1.]}).to_csv(folder/'turnover.csv',index=False)
@@ -45,7 +45,7 @@ def dashboard_root(tmp_path):
     (tmp_path/'source.txt').write_text('frozen source evidence')
     (tmp_path/'code.txt').write_text('fixed synthetic study code')
     manifest={'config_digest':config_digest(c),'cost_bps_per_dollar':c['costs']['transaction_cost_bps'],'risk':c['risk'],
-        'input_sha256':{'source.txt':file_sha256(tmp_path/'source.txt')},'code_sha256':{'code.txt':file_sha256(tmp_path/'code.txt')},
+        'risk_inputs':{'rebuilt':'reconstructed daily WML only','KF':'KF daily WML only','fallback':False},'input_sha256':{'source.txt':file_sha256(tmp_path/'source.txt')},'code_sha256':{'code.txt':file_sha256(tmp_path/'code.txt')},
         'output_sha256':{str(p.relative_to(tmp_path)):file_sha256(p) for p in folder.glob('*.csv')}}
     (folder/'run.json').write_text(json.dumps(manifest))
     return tmp_path
@@ -113,7 +113,7 @@ def test_frontend_switches_scenarios_and_explains_missing_data(dashboard_root,mo
     assert at.radio(key='basis').value=='Gross before costs'
     assert at.radio(key='basis').disabled
     assert any('unavailable' in x.value.lower() for x in at.info)
-    at.selectbox(key='source').select('Rebuilt WML · stock reference').run()
+    at.selectbox(key='source').select('Rebuilt WML · own risk').run()
     at.radio(key='basis').set_value('Net of trading costs').run()
     assert not at.exception
 
@@ -134,3 +134,13 @@ def test_invalid_settings_have_an_actionable_frontend_error(dashboard_root):
     p=dashboard_root/'configs/config.yaml';c=yaml.safe_load(p.read_text());c['universe']['share_codes']=[10]
     p.write_text(yaml.safe_dump(c))
     with pytest.raises(DashboardDataError,match='settings'):load_snapshot(dashboard_root)
+
+
+def test_legacy_shared_risk_manifest_is_rejected(dashboard_root):
+    folder = dashboard_root / load_config(root=dashboard_root)['paths']['study']
+    path = folder / 'run.json'
+    manifest = json.loads(path.read_text())
+    manifest.pop('risk_inputs')
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(DashboardDataError, match='shared-KF-risk'):
+        load_snapshot(dashboard_root)

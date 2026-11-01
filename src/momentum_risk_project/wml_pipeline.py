@@ -13,7 +13,7 @@ from .stock_reconstruction import reconstruct_stock_wml,attach_delisting_evidenc
 from .daily_portfolio import daily_wml_from_holdings
 from .stock_backtest import simulate_stock_account
 
-SCHEMA_VERSION=1
+SCHEMA_VERSION=2
 MONTHLY_COLUMNS=['permno','mthcaldt','mthret','mthretx','mthprc','mthprcdt','mthcap',
  'mthretflg','mthdelflg','mthprcflg','legacy_shrcd','legacy_exchcd','securitytype',
  'securitysubtype','sharetype','usincflg','issuertype','primaryexch','conditionaltype',
@@ -59,14 +59,20 @@ class WMLBuild:
     audit:dict=field(default_factory=dict)
     provenance:dict=field(default_factory=dict)
     daily:pd.DataFrame|None=None
+    daily_reconstructed:pd.DataFrame|None=None
+
+    @property
+    def monthly_reconstructed(self):
+        return portfolio_returns(self.holdings,"return_reconstructed")[0]
 
     def account_holdings(self,return_policy):
         """Explicit valuation selection; never quietly substitute the reference."""
-        if return_policy not in {'dm','published_reference'}:
-            raise ValueError('Choose dm or published_reference explicitly')
+        if return_policy not in {'dm','published_reference','reconstructed_zero_missing'}:
+            raise ValueError('Choose dm, published_reference or reconstructed_zero_missing explicitly')
         h=self.holdings.copy()
-        h['account_return']=h['return_dm' if return_policy=='dm' else 'return_reference']
-        h['scenario_imputed']=h['dm_imputed' if return_policy=='dm' else 'reference_imputed']
+        column={'dm':'return_dm','published_reference':'return_reference','reconstructed_zero_missing':'return_reconstructed'}[return_policy]
+        h['account_return']=h[column]
+        h['scenario_imputed']=h['dm_imputed' if return_policy=='dm' else 'reconstructed_imputed' if return_policy=='reconstructed_zero_missing' else 'reference_imputed']
         return h
 
     def targets(self,weights):
@@ -105,6 +111,9 @@ def value_holdings(holdings):
     h['dm_imputed']=ordinary|recorded
     h['return_reference']=h.return_as_published.fillna(0.)
     h['reference_imputed']=h.return_as_published.isna()
+    h['return_reconstructed']=h.return_dm.combine_first(h.return_reference)
+    h['reconstructed_imputed']=h.return_as_published.isna()
+    h['terminal_increment_assumed_zero']=~h.payoff_complete.fillna(False).astype(bool)
     return h
 
 
@@ -158,16 +167,22 @@ def rebuild_daily(build,cache_dir,*,progress=print):
     cal=pd.read_parquet(root/'calendar.parquet')
     dates=pd.DatetimeIndex(pd.to_datetime(cal.loc[cal.tradingflg.eq('Y')&cal.exchangegroup.eq('CIZ'),'caldt']))
     positions=build.holdings.loc[build.holdings.momentum_decile.isin([1,10])]
-    frames=[]
+    frames=[];reconstructed=[]
     for year,h in positions.groupby(positions.month.dt.year):
         p=root/f'held_daily/{year}.parquet'
         if file_sha256(p)!=manifest['files'][f'held_daily/{year}']['sha256']:
             raise ValueError(f'Daily source fingerprint mismatch: {year}')
-        frames.append(daily_wml_from_holdings(h,pd.read_parquet(p),dates,mode='zero_regular_dm_checked'))
+        records=pd.read_parquet(p)
+        frames.append(daily_wml_from_holdings(h,records,dates,mode='zero_regular_dm_checked'))
+        reconstructed.append(daily_wml_from_holdings(h,records,dates,mode='zero_missing_reconstructed'))
         progress(f'Rebuilt daily WML: {year}')
     build.daily=pd.concat(frames).sort_index()
     build.daily.index=build.daily.index.as_unit('ns')
-    build.audit['daily_policy']='zero_regular_dm_checked; special/multi-session/terminal unknowns protected'
+    build.daily_reconstructed=pd.concat(reconstructed).sort_index()
+    build.daily_reconstructed.index=build.daily_reconstructed.index.as_unit('ns')
+    build.audit['daily_policy']='strict diagnostic: zero_regular_dm_checked; primary: zero_missing_reconstructed'
+    build.audit['primary_valuation']='known terminal components once; missing stock components and unknown terminal increments zero; multisession returns at source endpoint'
+    build.audit['risk_source']='reconstructed daily WML only, no KF fallback'
     build.provenance['daily_manifest_sha256']=file_sha256(root/'cache_manifest.json')
     return build.daily
 
@@ -179,6 +194,7 @@ def save_build(build,output_dir):
     frames={'holdings':build.holdings,'breakpoints':build.breakpoints,
         'monthly_dm':build.monthly_dm,'monthly_reference':build.monthly_reference}
     if build.daily is not None:frames['daily']=build.daily
+    if build.daily_reconstructed is not None:frames['daily_reconstructed']=build.daily_reconstructed
     files={}
     for name,frame in frames.items():
         p=root/f'{name}.parquet';frame.to_parquet(p);files[p.name]=file_sha256(p)
@@ -188,14 +204,21 @@ def save_build(build,output_dir):
 
 def load_build(output_dir):
     root=Path(output_dir);m=json.loads((root/'manifest.json').read_text())
-    if m['schema_version']!=SCHEMA_VERSION:raise ValueError('Unsupported WML artifact version')
+    if m['schema_version'] not in {1,SCHEMA_VERSION}:raise ValueError('Unsupported WML artifact version')
     for name,digest in m['files'].items():
         if file_sha256(root/name)!=digest:raise ValueError('WML artifact fingerprint mismatch')
     frames={name:pd.read_parquet(root/f'{name}.parquet') for name in ['holdings','breakpoints','monthly_dm','monthly_reference']}
     b=WMLBuild(**frames,audit=m['audit'],provenance=m['provenance'])
+    if 'return_reconstructed' not in b.holdings:
+        b.holdings['return_reconstructed']=b.holdings.return_dm.combine_first(b.holdings.return_reference)
+        b.holdings['reconstructed_imputed']=b.holdings.return_as_published.isna()
+        b.holdings['terminal_increment_assumed_zero']=~b.holdings.payoff_complete.fillna(False).astype(bool)
     if 'daily.parquet' in m['files']:
         b.daily=pd.read_parquet(root/'daily.parquet')
         b.daily.index=b.daily.index.as_unit('ns')
+    if 'daily_reconstructed.parquet' in m['files']:
+        b.daily_reconstructed=pd.read_parquet(root/'daily_reconstructed.parquet')
+        b.daily_reconstructed.index=b.daily_reconstructed.index.as_unit('ns')
     if membership_digest(b.holdings)!=b.audit['membership_digest']:raise ValueError('WML membership mismatch')
     return b
 

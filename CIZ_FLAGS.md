@@ -237,3 +237,15 @@ The frozen metadata contains 774 labels. The current official PC web page additi
 - **N — No:** No - The flag is false - See Item Info file for more details on use
 
 - **Y — Yes:** Yes - The flag is true - See Item Info file for more details on use
+
+## Current primary scenario versus strict diagnostics
+
+The current primary stock-account and risk series use `reconstructed_zero_missing`
+(monthly) and `zero_missing_reconstructed` (daily). They retain known numeric
+components, include recorded delisting components once and assume missing stock
+components/unknown terminal increments zero. Multi-session numeric components are
+booked once at the provider endpoint. These are explicit project valuation
+assumptions, not a CRSP/KF rule or confirmed final recovery. The strict policies
+described above remain diagnostic artifacts; their missing values are never
+replaced with KF risk. See Notebook 03 and WML_PIPELINE.md for the full current
+specification and diagnostic counters.

@@ -14,9 +14,9 @@ periods:
   raw_start: '1925-12-01'
   build_start: '1927-01'
   end: '2025-12'
-  study_start: '1927-05'
+  study_start: '1927-07'
 windows:
-  paper_available_common: ['1927-05', '2011-12']
+  paper_available_common: ['1927-07', '2011-12']
   paper_turnover_test: ['1951-03', '2010-12']
   extension_disjoint: ['2012-01', '2025-12']
 universe:
@@ -26,6 +26,8 @@ universe:
   weighting: value
   formation_price_policy: period_end_TR_BA
 risk:
+  rebuilt_source: reconstructed_daily
+  benchmark_source: KF_daily
   annual_target: 0.12
   window: 126
   trading_days_per_month: 21
@@ -38,4 +40,6 @@ costs:
 valuation:
   ordinary_missing: zero
   terminal: known_once_unknown_preserved
-  complete_reference: published_reference
+  complete_reference: reconstructed_zero_missing
+  primary_unknown_terminal_increment: zero
+  daily_multisession: book_on_observed_endpoint

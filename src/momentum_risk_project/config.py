@@ -19,6 +19,7 @@ def load_config(path=None, *, root=None):
     for key in ["raw_cache","daily_cache","stock_inputs","build","study","results","kf_daily","kf_monthly","ff3"]:
         if key not in c["paths"]:raise ValueError("Missing configured path: "+key)
     r=c["risk"];cost=c["costs"]
+    if r.get("rebuilt_source")!="reconstructed_daily" or r.get("benchmark_source")!="KF_daily":raise ValueError("Rebuilt risk must use reconstructed daily WML; KF fallback is forbidden")
     if not np.isfinite(r["annual_target"]) or r["annual_target"]<=0 or not isinstance(r["window"],int) or r["window"]<1 or r["trading_days_per_month"]<1:
         raise ValueError("Invalid risk settings")
     if not np.isfinite(r["leverage_cap"]) or r["leverage_cap"]!=2.0:raise ValueError("The named managed_cap_2x baseline requires a 2.0 leverage cap")
@@ -28,7 +29,7 @@ def load_config(path=None, *, root=None):
     if cost["baseline_bps"]!=10 or cost["financing_cost_bps"]!=0:raise ValueError("Current reported study requires 10bp baseline and zero financing")
     expected={"share_codes":[10,11],"exchange_codes":[1,2,3],"ranking":"12-2","weighting":"value","formation_price_policy":"period_end_TR_BA"}
     if c["universe"]!=expected:raise ValueError("Unsupported universe change; implement and validate before configuring")
-    if c["valuation"]!={"ordinary_missing":"zero","terminal":"known_once_unknown_preserved","complete_reference":"published_reference"}:
+    if c["valuation"]!={"ordinary_missing":"zero","terminal":"known_once_unknown_preserved","complete_reference":"reconstructed_zero_missing","primary_unknown_terminal_increment":"zero","daily_multisession":"book_on_observed_endpoint"}:
         raise ValueError("Unsupported valuation policy")
     start=pd.Period(c["periods"]["study_start"],freq="M");end=pd.Period(c["periods"]["end"],freq="M")
     if pd.Period(c["periods"]["build_start"],freq="M")>start or start>end:raise ValueError("Invalid build/study dates")

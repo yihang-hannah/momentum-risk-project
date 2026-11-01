@@ -22,12 +22,22 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
     mode='zero_regular_dm_checked' additionally protects missing corporate
     actions and multi-session returns; legacy mode remains reproducible.
 
+    mode='zero_missing_reconstructed' retains published numeric components,
+    recovers recorded terminal components once, and sets missing components to
+    zero. Partial/unknown terminal increments are explicitly assumed zero, not
+    declared observed. Multi-session numeric returns are booked on their source
+    end date; intervening unavailable valuations are zero. This is a complete
+    last-observation/zero-increment research scenario, not a provider rule.
+
     Known final payoffs follow monthly research attribution to the delist month;
     this is not a point-in-time disclosure or cash-settlement simulator. Included
     daily delisting records are never added twice. Long and short leg daily
     returns are calculated separately, then subtracted (not compounded WML).
     """
+    reconstructed_zero = mode == "zero_missing_reconstructed"
     checked_flags = mode == "zero_regular_dm_checked"
+    if reconstructed_zero:
+        mode = "zero_regular_dm"
     if checked_flags:
         mode = "zero_regular_dm"
     if mode not in {"strict", "carry_prices", "zero_regular_dm"}:
@@ -55,6 +65,8 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
                 raise ValueError("Missing winner or loser leg")
             source = md.loc[md.permno.isin(pos.index)]
             source = source.copy()
+            source["assumed_missing_component"] = False
+            source["special_missing_assumed"] = False
             # Monthly research attribution: move a separate Y component onto
             # its actual delist date before collapsing components. Otherwise
             # clearing positions after delist could accidentally erase Y at t+1.
@@ -69,7 +81,7 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
                 # loss for a missing Y component. Quality remains unresolved.
                 source = source.loc[~(source.dlydelflg.eq("Y") & source.dlyret.isna())]
             if mode == "zero_regular_dm" and "delret" in pos:
-                recorded = pos.delret.where(pos.delret.ge(-1) & np.isfinite(pos.delret) & ~pos.mthdelflg.eq("V"))
+                recorded = pos.delret.where(pos.delret.ge(-1) & np.isfinite(pos.delret) & (reconstructed_zero | ~pos.mthdelflg.eq("V")))
                 replacement = source.permno.map(recorded)
                 recover_y = source.dlydelflg.eq("Y") & source.dlyret.isna() & replacement.notna()
                 source.loc[recover_y, "dlyret"] = replacement.loc[recover_y]
@@ -83,7 +95,10 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
                 source.loc[policy_blocked, "dlyret"] = np.nan
             zero_components = pd.Series(False, index=source.index)
             if mode == "zero_regular_dm":
-                zero_components = source.dlyret.isna() & ~source.dlydelflg.eq("Y") & ~policy_blocked
+                zero_components = source.dlyret.isna() & (reconstructed_zero | ~source.dlydelflg.eq("Y")) & ~policy_blocked
+                source["assumed_missing_component"] = zero_components
+                if reconstructed_zero and "dlyretmissflg" in source:
+                    source["special_missing_assumed"] = zero_components & ~source.dlyretmissflg.isin(["NA","MP","NT","GP"])
                 source.loc[zero_components, "dlyret"] = 0.0
             # N and Y components on a date compound; strict missing components stay unknown.
             good = np.isfinite(source.dlyret) & source.dlyret.ge(-1)
@@ -122,6 +137,8 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
                 ret = ret.mask(absent_or_missing, 0.0)
                 # No event date is not evidence of a complete terminal payoff.
                 unknown = ~pos.payoff_complete.fillna(False).astype(bool)
+                if reconstructed_zero:
+                    unknown[:] = False
                 if "delistingdt" in pos:
                     unknown &= pos.delistingdt.isna()
                 for stock in pos.index[unknown & pos.mthdelflg.isin(["G", "M", "V"])]:
@@ -136,11 +153,11 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
                     event_index = min(event_index, len(month_dates)-1)
                     event_date = month_dates[event_index]
                     components = source.loc[source.permno.eq(stock) & source.dlydelflg.eq("Y")]
-                    included = components.dlyret.notna().any()
+                    included = (components.dlyret.notna() & ~components.assumed_missing_component).any()
                     flag = row.mthdelflg
                     payoff = row.get("delret", np.nan)
-                    known = pd.notna(payoff) and np.isfinite(payoff) and payoff >= -1 and flag != "V"
-                    dm_unknown = (mode == "zero_regular_dm" and
+                    known = pd.notna(payoff) and np.isfinite(payoff) and payoff >= -1 and (reconstructed_zero or flag != "V")
+                    dm_unknown = (mode == "zero_regular_dm" and not reconstructed_zero and
                         not (bool(row.get("payoff_complete", False)) or known or (included and flag != "V")))
                     if (mode == "strict" and not bool(row.get("payoff_complete", False))) or dm_unknown:
                         ret.loc[event_date, stock] = np.nan
@@ -153,6 +170,16 @@ def daily_wml_from_holdings(holdings, daily_records, trading_dates, *, mode="str
                     after = month_dates > event_date
                     ret.loc[after, stock] = 0.0
                     zero_imputed.loc[after, stock] = 0
+            if reconstructed_zero:
+                # Missing is imputed at stock/component level, never by filling
+                # an already aggregated WML series with zero.
+                if ret.isna().any().any():
+                    raise ValueError("Unresolved invalid numeric return in zero-missing reconstruction")
+                frame[f"P{decile}_assumed_terminal_positions"] = int((~pos.payoff_complete.fillna(False).astype(bool)).sum())
+                frame[f"P{decile}_special_missing_components"] = source.groupby("date").special_missing_assumed.sum().reindex(month_dates,fill_value=0)
+                if "dlyretdurflg" in source:
+                    multi=source.dlyretdurflg.isin([f"P{i}" for i in range(1,10)]) & source.dlyret.notna()
+                    frame[f"P{decile}_multisession_endpoint_components"] = source.loc[multi].groupby("date").size().reindex(month_dates,fill_value=0)
             wealth = (1 + ret).cumprod(skipna=False)
             values = wealth.mul(pos.leg_weight, axis=1)
             leg_wealth = values.sum(axis=1, min_count=len(pos))

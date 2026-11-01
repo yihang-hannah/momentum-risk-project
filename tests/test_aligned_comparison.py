@@ -19,5 +19,15 @@ def test_common_windows_withhold_all_metrics_if_either_series_has_gap():
 def test_default_evaluation_uses_only_paper_and_disjoint_extension():
     from momentum_risk_project.aligned_comparison import WINDOWS
     assert set(WINDOWS)=={'paper_available_common','extension_disjoint'}
-    assert WINDOWS['paper_available_common']==('1927-05','2011-12')
+    assert WINDOWS['paper_available_common']==('1927-07','2011-12')
     assert WINDOWS['extension_disjoint']==('2012-01','2025-12')
+
+
+def test_retired_runner_cannot_regenerate_shared_risk_results(tmp_path):
+    import pytest
+    from momentum_risk_project.aligned_comparison import run, audit_own_risk
+    with pytest.raises(ValueError, match='retired'):
+        run(tmp_path, tmp_path / 'output')
+    with pytest.raises(ValueError, match='retired'):
+        audit_own_risk(tmp_path, tmp_path / 'output', tmp_path)
+    assert not (tmp_path / 'output').exists()

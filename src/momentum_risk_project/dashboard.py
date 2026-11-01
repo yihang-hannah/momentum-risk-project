@@ -12,7 +12,7 @@ from .paths import project_root, project_path
 from .wml_pipeline import file_sha256
 from .evaluation import describe
 
-STRATEGIES={"unmanaged":"Unmanaged", "managed_shared_KF_risk":"Risk managed"}
+STRATEGIES={"unmanaged":"Unmanaged", "managed_own_risk":"Risk managed"}
 WINDOW_LABELS={"paper_available_common":"Historical sample", "paper_turnover_test":"Paper turnover test", "extension_disjoint":"Post-sample extension"}
 METHOD_LABELS={"funded_account":"Funded stock account", "appendix_scaled_positions":"Paper-style · scaled positions", "appendix_literal_eq10":"Paper-style · printed inverse L"}
 
@@ -48,7 +48,7 @@ class DashboardSnapshot:
         if cost not in self.costs:raise DashboardDataError("This cost has not been computed; choose a saved scenario")
         a,z=self.config["windows"][window];idx=pd.period_range(a,z,freq="M",name="month")
         gross=self.frames["gross_reference_returns"].reindex(idx)
-        prefix="KF" if source=="KF" else "Rebuilt reference"
+        prefix="KF" if source=="KF" else "Rebuilt"
         returns=pd.DataFrame({"Unmanaged":gross[prefix+" unmanaged"],"Risk managed":gross[prefix+" managed"]},index=idx)
         selected=[]
         account_cost=cost if basis=="net" else 0.
@@ -87,6 +87,8 @@ def load_snapshot(root=None):
             for name,digest in m[group].items():
                 p=project_path(name,root)
                 if not p.is_file() or file_sha256(p)!=digest:raise DashboardDataError("Saved inputs or results have changed. Rebuild with python run_all.py.")
+        if m.get("risk_inputs",{}).get("fallback") is not False or m.get("risk_inputs",{}).get("rebuilt")!="reconstructed daily WML only":
+            raise DashboardDataError("Old shared-KF-risk results are not valid for this app. Rebuild with python run_all.py.")
         frames={name:pd.read_csv(folder/(name+".csv")) for name in ["metrics","funded_monthly","appendix_monthly","coverage","turnover","cutoffs"]}
         for name in ["funded_monthly","appendix_monthly"]:
             frames[name]["month"]=pd.PeriodIndex(frames[name].month,freq="M")
@@ -140,7 +142,7 @@ class DashboardView:
             "months":len(self.returns),"source":self.source,"basis":self.basis,"one_way_cost_bps":self.cost,
             "accounting":self.method if self.source=="rebuilt" else "gross benchmark only",
             "starting_capital":capital,"risk":snapshot.manifest["risk"],"financing_cost_bps":0,
-            "risk_source":"KF daily deciles, shared between monthly return series",
-            "valuation":"published reference, conditional terminal values" if self.source=="rebuilt" else "published KF deciles",
+            "risk_source":"reconstructed daily WML" if self.source=="rebuilt" else "KF daily WML",
+            "valuation":"known delisting once; missing stock components and unknown terminal increments zero scenario" if self.source=="rebuilt" else "published KF deciles",
             "account_continuity":"full-study account retained, wealth rebased only for display",
             "study_fingerprint":snapshot.fingerprint}

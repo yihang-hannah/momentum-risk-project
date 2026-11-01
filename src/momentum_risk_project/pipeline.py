@@ -12,6 +12,7 @@ from .evaluation import describe,factor_tests,reconstruction_errors
 from .plotting import replication_figures
 from .backtest import run_backtest
 from . import study
+from .risk_inputs import independent_risk
 
 
 def verify_cache(cache,manifest_name="cache_manifest.json"):
@@ -120,11 +121,15 @@ def baseline_reports(config,root,scope):
         returns.to_csv(out/"strategy_returns.csv");weights.to_csv(out/"applied_weights.csv");sigma.to_csv(out/"month_end_sigma.csv")
         pd.DataFrame({k:describe(returns[k]) for k in returns}).T.to_csv(out/"gross_metrics.csv")
         for k,frame in factor_tests(returns,ff).items():frame.to_csv(out/(k+".csv"),index=k.startswith("ff"))
-        reconstruction_errors(b.monthly_reference.WML,km,{name:(a,z)}).to_csv(out/"reference_reconstruction_errors.csv",index=False)
+        reconstruction_errors(b.monthly_reconstructed.WML,km,{name:(a,z)}).to_csv(out/"reference_reconstruction_errors.csv",index=False)
         reconstruction_errors(b.monthly_dm.WML,km,{name:(a,z)}).to_csv(out/"strict_paired_reconstruction_errors.csv",index=False)
-        reference=pd.DataFrame({"KF_unmanaged":km,"rebuilt_reference_unmanaged":b.monthly_reference.WML,
-            "KF_managed":km*estimate_risk(kd,km.index,annual_target=risk["annual_target"],window=risk["window"],trading_days_per_month=risk["trading_days_per_month"]).weight})
-        reference["rebuilt_reference_managed"]=reference.rebuilt_reference_unmanaged*estimate_risk(kd,reference.index,annual_target=risk["annual_target"],window=risk["window"],trading_days_per_month=risk["trading_days_per_month"]).weight
+        own_risk,kf_risk=independent_risk(b,kd,returns.index,risk)
+        reference=pd.DataFrame({"KF_unmanaged":km.reindex(returns.index),
+            "rebuilt_unmanaged":b.monthly_reconstructed.WML.reindex(returns.index),
+            "KF_managed":km.reindex(returns.index)*kf_risk.weight})
+        reference["rebuilt_managed"]=reference.rebuilt_unmanaged*own_risk.weight
+        own_risk.to_csv(out/"rebuilt_risk_weights.csv")
+        kf_risk.to_csv(out/"KF_risk_weights.csv")
         reference.loc[a:z].to_csv(out/"rebuilt_KF_returns.csv")
         (out/"construction_audit.json").write_text(json.dumps(b.audit,indent=2)+"\n")
         # This is the factor-scaling teaching scenario, not stock costs.
@@ -135,7 +140,8 @@ def baseline_reports(config,root,scope):
         manifest={"config_digest":config_digest(config),"window":name,"start":a,"end":z,
             "fixed_leverage":"historical common-sample mean; ex-post diagnostic in historical window, frozen in extension",
             "fixed_weight":fixed,"risk_weights":"previous month-end; no extra lag","ff3_inference":"OLS","ff4_timing_inference":"HAC 6 lags",
-            "reference":"published-reference rebuilt monthly WML with shared KF risk; not independent stock-risk replication",
+            "risk_inputs":{"rebuilt":"reconstructed daily WML only","KF":"KF daily WML only","fallback":False},
+            "reference":"independent own-risk reconstructed strategy under explicit stock-component zero/terminal-increment scenario",
             "inputs":{key:file_sha256(configured_path(config,key,root)) for key in ["kf_daily","kf_monthly","ff3"]},
             "code":{p.name:file_sha256(p) for p in Path(__file__).parent.glob("*.py")}}
         (out/"run.json").write_text(json.dumps(manifest,indent=2)+"\n")
@@ -155,7 +161,7 @@ def stock_reports(config,root,scope, *, force=False):
         for frame in frames.values():
             if "month" in frame:frame["month"]=pd.PeriodIndex(frame.month,freq="M")
         gross=pd.read_csv(private/"gross_reference_returns.csv",index_col=0);gross.index=pd.PeriodIndex(gross.index,freq="M")
-        study.export_study(root,config,frames,gross,{"unmanaged":None,"managed_shared_KF_risk":None},(scope,))
+        study.export_study(root,config,frames,gross,{"unmanaged":None,"managed_own_risk":None},(scope,))
     else:study.run_study(root,config=config,scopes=(scope,))
 
 

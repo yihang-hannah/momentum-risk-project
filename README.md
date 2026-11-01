@@ -11,11 +11,38 @@ The repository now follows the course hierarchy: reusable logic in `src`, four t
 - **03:** document all data sources, field/flag rules and assumptions; inspect the package-built stock WML and script-generated KF comparisons. The complete processing specification and official links remain at its beginning.
 - **04:** unpack the factor-scaling cost proxy for teaching and check the reusable engine/script report.
 - **05:** display script-generated stock-cost results and validate short stock-account/API examples.
-- **Frontend MVP (2026-11-01):** completed the English Streamlit research desk with sample/source/cost switching, interactive performance and trading charts, coverage explanations and CSV/JSON exports. All 45 saved window/accounting/fee scenarios match the original metrics; the full suite passes 110 tests. See [startup instructions](#research-frontend-mvp).
+- **Frontend MVP (2026-11-01):** completed the English Streamlit research desk with sample/source/cost switching, interactive performance and trading charts, coverage explanations and CSV/JSON exports. Saved scenarios are verified against their own generated ledgers; primary strategies now use independent daily-risk sources. See [startup instructions](#research-frontend-mvp).
 
-Complete rebuilt-WML performance uses **published-reference monthly stock valuations and shared KF daily risk weights**. Ordinary missing stock returns use the accepted zero sensitivity; unresolved terminal payoffs remain unknown in the strict policy. Checked own-stock daily gaps currently leave no complete month-end 126-session risk forecasts. Missing forecasts are not cash, and these results are not a complete independent stock-risk replication.
+**Independent risk sources:** the rebuilt strategy now estimates risk only from
+`daily_reconstructed.WML`, and KF estimates risk only from KF daily WML. There is
+no KF-to-rebuilt fallback. Both use the same evaluation calendar and a 126-session
+prior-month forecast, 21-session monthly scaling and 12% annual target.
 
-At 10bp per dollar traded, historical common-window funded-account Sharpe improves from about **0.474 to 0.900**, and 2012–2025 from **0.105 to 0.270**. Extension profitability is weak. On the separate 1951–2010 turnover-test window, scaled-position half-turnover is about **71.32% → 73.40%**. The supplied paper prints inverse risk scaling in its managed turnover formula; the literal inverse-L diagnostic and the economically scaled-position diagnostic remain separate. Gross KF replication, factor-proxy costs and funded stock costs must not be mixed.
+**Missing-value scenario:** fill missing stock return components with zero, retain
+published numeric components, and include recorded terminal components once. The
+primary monthly return prefers known DM-reconciled payoffs before the published
+aggregate. Unknown terminal *increments* are explicitly assumed zero; that does
+not mean a zero liquidation value or an observed final payoff. Multi-session
+numeric returns are booked once at their source endpoint, with unavailable
+intervening observations zero. Strict unresolved-value diagnostics remain parallel.
+No already-aggregated WML gaps, missing forecasts or non-existent prehistory are
+filled with cash/zeros to force coverage.
+
+The common historical comparison is **1927-07–2011-12**, not the former KF-only
+May start. Reconstructed daily portfolios begin January 1927 and have only 124
+sessions through May; June provides the first complete month-end forecast for
+July. A read-only WRDS query confirms no monthly stock observations before
+1925-12-31, so earlier full-rule holdings cannot be fabricated. The independent
+KF benchmark is restricted to identical July-start dates. The 1951–2010 paper
+turnover check and 2012–2025 extension are unchanged.
+
+At 10bp per dollar traded, the updated independently managed rebuilt strategy
+has historical annual mean **15.33%**, Sharpe **0.893**, and worst month **−29.09%**,
+versus unmanaged **12.98%**, **0.472**, **−78.26%**. In 2012–2025 the corresponding
+annual means are **3.27% vs 2.84%**, Sharpe **0.262 vs 0.105**, and worst month
+**−12.23% vs −29.66%**. Risk mitigation persists while extension profits remain weak.
+Old shared-KF-risk reports are preserved privately under
+`data/interim/shared_kf_before_own_risk_20261101` and are not current primary results.
 
 ## Repository structure
 
@@ -131,7 +158,7 @@ The output tree can be removed and regenerated with `python run_all.py`. Only fi
 - `results/{replication,extension}/figures/`: gross strategy wealth/drawdown and KF/rebuilt stock-study wealth, drawdown and cost sensitivity.
 - `data/processed/stock_study/`: final continuous study returns/metrics, strict account/own-risk coverage and fingerprints. Licensed PERMNO-level transitions/trades are under its `stock_trades/` subdirectory. These are private final analysis-ready data, not publication assets.
 
-The accepted windows are **1927-05–2011-12**, **1951-03–2010-12** (separate paper turnover check), and **2012-01–2025-12**. March–April 1927 lack the public KF daily warm-up. The extension is post-sample, not wholly post-publication. No removed auxiliary windows are restored.
+The accepted windows are **1927-07–2011-12**, **1951-03–2010-12** (separate paper turnover check), and **2012-01–2025-12**. March–June 1927 lack complete reconstructed daily warm-up. The extension is post-sample, not wholly post-publication. No removed auxiliary windows are restored.
 
 ## Research frontend MVP
 
@@ -161,13 +188,12 @@ only rebases displayed wealth; source returns and the continuous historical
 stock-account history are preserved.
 
 KF is explicitly gross-only because it has no constituent stock-cost ledger.
-Complete rebuilt results remain the conditional published-return reference with
-shared KF risk; the coverage tab retains the unresolved strict-stock limitations.
+Rebuilt results now use their own daily risk and the explicit stock-component-zero scenario; the coverage tab shows the separate strict diagnostics.
 No interpolated fees, invented returns or automatic cash substitution are used.
 The app exposes the current realized-volatility baseline; EWMA/GARCH selectors
 will be added after those research modules are integrated.
 
-The frontend adds 7 synthetic/AppTest checks; the full suite passes **110 tests**.
+The frontend and risk-source tests verify independent risk, no KF fallback, component-zero handling, point-in-time weights and scenario consistency.
 
 Presentation lives in `app/streamlit_app.py`; read-only scenario selection,
 provenance checks and metrics delegation are in `dashboard.py`, with interactive
@@ -200,12 +226,12 @@ build = load_build(configured_path(config, "build", root))
 months = pd.period_range("2012-01", "2025-12", freq="M")
 weights = pd.Series(1.0, index=months)  # +1 long / -1 short; a new account episode
 ledger, trades = build.backtest(
-    weights, return_policy="published_reference", transaction_cost_bps=10,
+    weights, return_policy="reconstructed_zero_missing", transaction_cost_bps=10,
     financing_cost_bps=0,
 )
 ```
 
-Each call starts a new account. For continuous comparisons, run once over the full consecutive calendar, then slice. `published_reference` remains conditional; `dm` stops on unknown valuations. `estimate_risk` already returns holding-month weights, while `strategies.volatility_managed_momentum` accepts origin-month sigma and shifts once internally. Never apply both lags.
+Each call starts a new account. For continuous comparisons, run once over the full consecutive calendar, then slice. `reconstructed_zero_missing` is the explicit complete primary scenario; `dm` stops on unknown valuations and `published_reference` is a legacy diagnostic. `estimate_risk` already returns holding-month weights, while `strategies.volatility_managed_momentum` accepts origin-month sigma and shifts once internally. Never apply both lags.
 
 ## Validation
 
@@ -228,10 +254,19 @@ The two collaborators can choose one extension each, working on their own named 
 - **EWMA:** proposed `src/momentum_risk_project/ewma.py`, `tests/test_ewma.py`, and Notebook 06. Use a zero-mean squared-return recursion, configurable decay (initial research setting 0.94), documented seed and warm-up. Return a forecast-origin-month schema with monthly sigma, availability and reason. A proposed 126-session warm-up is an experiment setting, not a paper rule. [Pandas EWM reference](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.ewm.html).
 - **GARCH:** proposed `garch.py`, `tests/test_garch.py`, and Notebook 07. Start with zero-mean Gaussian GARCH(1,1), rolling monthly refits using only available history; proposed 252–1,260-session training bounds. Fit percent returns, sum 21 daily forecast residual variances, convert back by 100², then take the square root. Record convergence/coverage failures, rather than substituting cash. [arch forecasting reference](https://arch.readthedocs.io/en/latest/univariate/forecasting.html).
 
-Both proposed modules should expose `forecast_month_end(daily_returns, origin_months, **parameters)` returning `monthly_sigma`, `forecast_available`, `reason`, indexed by the **forecast-origin month**. Convert to following holding-month weights once. Start on the same public KF WML to isolate risk-model differences, then apply weights to the same reconstructed holdings via the existing stock-account API. Keep valuation, costs, dates and target fixed; do not tune on 2012–2025 performance. Use exact common contiguous months, state any shorter GARCH warm-up sample, and do not drop internal gaps to stitch wealth.
+Both proposed modules should expose `forecast_month_end(daily_returns, origin_months, **parameters)` returning `monthly_sigma`, `forecast_available`, `reason`, indexed by the **forecast-origin month**. Convert to following holding-month weights once. For the rebuilt strategy, every model must consume reconstructed daily WML and apply its own weights to reconstructed holdings. KF may be a separate benchmark using KF daily inputs; do not inject KF risk into a rebuilt strategy. A KF-only preliminary model comparison must remain separately labelled. Keep valuation, costs, dates and target fixed; do not tune on 2012–2025 performance. Use exact common contiguous months, state any shorter GARCH warm-up sample, and do not drop internal gaps to stitch wealth.
 
 The maintainer will integrate the shared interface into a future `risk_models.py` adapter/extension runner. These proposed modules/options do not exist yet; current production configuration supports only the validated baseline. New model logic must live in `src`, experiments in notebooks, and official extension results be regenerated through scripts. Keep model results in separate configured locations and review changes before merging.
 
 ## Collaboration
 
 The remote alias is `ieor4576`; the repository name is `momentum-risk-project`. Work on a personal named branch, fetch before integrating, and do not use `git add .` over licensed/local data. No raw data, generated results or credentials belong in Git. Review code/config changes together with tests and regenerated result manifests. See the detailed methodology guides for remaining economic assumptions; software refactoring does not resolve provider-vintage or terminal-payoff uncertainty.
+
+### Independent-risk verification
+
+Run `python -m momentum_risk_project.own_risk_validation` after `python run_all.py`
+to reconcile source-derived weights, gross returns, funded-account identities and
+all saved frontend scenarios. `pytest -q` covers component-zero handling, known
+delisting exactly once, lagged risk, independent inputs and rejection of old
+shared-KF-risk manifests. `validation.py` is only the historical layout-migration
+audit; its old numerical-equality baseline is not the current scientific policy.

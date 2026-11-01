@@ -45,7 +45,7 @@ with st.sidebar:
     window=st.selectbox("Evaluation window",list(c["windows"]),format_func=lambda x:WINDOW_LABELS[x],key="window")
     start,end=c["windows"][window]
     st.caption(f"{start} — {end} · monthly returns")
-    source_label=st.selectbox("Return source",["Rebuilt WML · stock reference","KF WML · gross benchmark"],key="source")
+    source_label=st.selectbox("Return source",["Rebuilt WML · own risk","KF WML · gross benchmark"],key="source")
     source="KF" if source_label.startswith("KF") else "rebuilt"
     if "basis" not in st.session_state:
         st.session_state["basis"]="Net of trading costs"
@@ -64,7 +64,7 @@ with st.sidebar:
         st.caption("Funded account: actual buys/sells and fees funded from NAV. Paper-style views use normalized-leg half-turnover.")
     st.divider()
     st.markdown("**Risk model**")
-    st.caption(f"Realized volatility · {c['risk']['window']} sessions\n\n{c['risk']['annual_target']:.0%} annual target · KF daily risk")
+    st.caption(f"Realized volatility · {c['risk']['window']} sessions\n\n{c['risk']['annual_target']:.0%} annual target · {'own-stock daily risk' if source=='rebuilt' else 'KF daily risk'}")
     st.markdown('<span class="status">● Verified saved scenarios</span>',unsafe_allow_html=True)
 
 try:
@@ -82,7 +82,7 @@ with tag:
     st.markdown('<span class="status">↗ Research backtest / MVP</span>',unsafe_allow_html=True)
 
 if source=="rebuilt":
-    st.markdown('<div class="note"><b>Conditional stock reference.</b> Rebuilt monthly WML uses shared KF risk weights. Ordinary return gaps use the selected zero assumption; some terminal values remain unconfirmed. This is not a complete independent stock-risk replication.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="note"><b>Own-stock risk, explicit zero-gap scenario.</b> Rebuilt daily WML determines rebuilt positions; KF uses its own risk separately. Missing stock components and unknown terminal increments are assumed zero, while known delisting returns are included once. Strict unresolved valuations remain a diagnostic.</div>',unsafe_allow_html=True)
 else:
     st.caption("KF benchmark · gross returns only. No constituent-stock costs are inferred from the published factor series.")
 
@@ -161,7 +161,7 @@ with data:
     a,b=st.columns(2)
     with a,st.container(border=True):
         st.markdown("**Data & timing**")
-        st.markdown("Value-weighted winner-minus-loser deciles. Monthly portfolio returns; daily squared returns forecast risk. The previous month's final session sets the next month's weight.")
+        st.markdown("Value-weighted winner-minus-loser deciles. Monthly portfolio returns; each strategy’s own daily squared returns forecast its risk. The previous month's final session sets the next month's weight.")
         st.markdown(f"**Risk settings:** {c['risk']['window']} daily observations · {c['risk']['trading_days_per_month']} sessions per month · {c['risk']['annual_target']:.0%} annual target.")
         st.markdown("**Source:** Kenneth French public deciles; rebuilt portfolios use authorized CRSP/WRDS extracts. No downloads or fits run from this interface.")
     with b,st.container(border=True):
@@ -169,10 +169,10 @@ with data:
         st.markdown("**Independent-stock coverage**")
         st.metric("Own-stock risk forecasts",f"{int(record.own_stock_risk_forecasts):,} / {len(view.returns):,}")
         st.caption(f"Strict monthly returns available: {int(record.strict_DM_monthly_returns):,}. Complete continuous strict-account months in this view: {int(record.strict_continuous_account_known_months):,}.")
-        st.markdown("Unavailable forecasts are **unknown, not cash**. Complete managed results shown here use KF daily risk. Independent strict stock-risk performance is withheld.")
-    st.caption("Historical evaluation starts in May 1927 because earlier KF daily warm-up is incomplete. The 2012–2025 extension is post-sample, not entirely post-publication.")
+        st.markdown("Unavailable forecasts are **unknown, not cash**. The primary reconstructed strategy estimates risk from its own daily returns under the stated zero scenario. Strict unresolved valuations are retained separately; no KF weights or cash fill are substituted.")
+    st.caption("The common evaluation starts in July 1927: reconstructed daily history starts in January and needs a complete 126-session month-end forecast. The 2012–2025 extension is post-sample, not entirely post-publication.")
     with st.expander("Return and cost assumptions"):
-        st.markdown("Ordinary monthly stock-return gaps use the accepted zero assumption. The strict policy includes known delisting values once and preserves unknown terminal values; the complete published-return reference is weaker. No short-borrow fee, rebate, variable impact or delayed cash-timing model is inferred. Financing is zero.")
+        st.markdown("Ordinary monthly stock-return gaps use the accepted zero assumption. The primary scenario includes recorded delisting components once, retains published numeric components and assumes unobserved increments zero; strict diagnostics preserve unknown terminal values. Zero terminal return is not a claim of zero liquidation value. Multi-session numeric components are booked on their observed endpoint, with unavailable intervening values zero. No short-borrow fee, rebate, variable impact or delayed cash-timing model is inferred. Financing is zero.")
         st.markdown("The paper turnover test uses its separate March 1951–December 2010 window. EWMA and GARCH are not integrated yet; the current interface exposes only the validated historical-risk model.")
     with st.expander("Reproduce this study"):
         st.code("python run_all.py\npython -m pytest -p no:cacheprovider tests/ -q",language="bash")

@@ -38,7 +38,7 @@ def fee_sensitivity(snapshot,view):
     q=snapshot.frames["metrics"]
     q=q.loc[q.window.eq(view.window)&q.method.eq(view.method)]
     fig=go.Figure()
-    for name,label in {"unmanaged":"Unmanaged","managed_shared_KF_risk":"Risk managed"}.items():
+    for name,label in {"unmanaged":"Unmanaged","managed_own_risk":"Risk managed"}.items():
         f=q.loc[q.strategy.eq(name)].sort_values("cost_bps_per_dollar")
         fig.add_trace(go.Scatter(x=f.cost_bps_per_dollar,y=f["Sharpe (rf=0)"],name=label,mode="lines+markers",line=dict(color=COLORS[label],width=2.5)))
     style(fig,320,"Net Sharpe · rf = 0")

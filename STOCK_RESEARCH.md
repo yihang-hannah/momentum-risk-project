@@ -69,10 +69,9 @@ monthly exclusions in the current sample. KF's daily deciles instead reform dail
 Risk is sqrt(21 times the last 126 daily squared WML returns' mean), without
 demeaning. The prior month's final session determines the next holding-month
 weight targeting 12% annual volatility. Missing forecasts are unknown, not cash.
-Checked own-stock risk has no complete month-end forecasts over the evaluation
-windows, so full independent managed-stock performance remains withheld.
+Strict own-stock diagnostics remain incomplete. The complete primary component-zero series supplies its own risk; missing forecasts never fall back to KF or cash.
 
-Complete comparisons use shared KF risk and published-reference stock returns.
+Complete primary comparisons use independently reconstructed daily risk and the explicit component-zero/known-payoff scenario. KF is independently risk-managed from its own daily series.
 Actual stock fees apply to entries/exits/drift with after-fee NAV targets;
 Appendix B half-turnover is a separate leg-normalized diagnostic. Keep the
 literal inverse-L and economically scaled-position conventions distinct. Stock
@@ -80,7 +79,7 @@ financing is zero; the factor-level Notebook 04 lab's illustrative financing
 spread is a separate scenario. Borrow/rebates, capacity and actual delayed cash
 availability are not identified.
 
-Historical common evaluation is 1927-05–2011-12; the paper's distinct turnover
+Historical common evaluation is 1927-07–2011-12; the paper's distinct turnover
 check is 1951-03–2010-12; extension is 2012-01–2025-12. Extension risk mitigation
 persists, but profitability is weak. Unknown payoffs, early warm-up and source
 vintage limitations survive a successful software refactor.
@@ -93,3 +92,12 @@ Historical reference MAE is about 13.91bp; extension about 47.43bp. Original
 attribution, flags, version comparisons, experiment scripts and notebook snapshots
 remain under private data/interim history or Git history. They are optional audit
 evidence rather than prerequisites for rebuilding current results.
+
+## Primary policy update
+
+The complete primary scenario fills missing stock components and unknown terminal
+increments with zero, with explicit diagnostic counts; it does not declare
+unknown final values observed. Known terminal components are included once.
+Multi-session numeric components are booked once on their observed endpoint.
+Both KF and rebuilt strategies now use separate own-source risk estimates. The
+old shared-risk study is archived privately and is no longer the primary result.

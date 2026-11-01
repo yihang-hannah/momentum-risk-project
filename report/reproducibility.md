@@ -1,3 +1,8 @@
+> Historical layout-migration record. Its shared-KF-risk numbers and equality
+> checks describe the archived pre-correction baseline, not the current study.
+> Current results use independent reconstructed daily risk; see README.md and
+> `python -m momentum_risk_project.own_risk_validation`.
+
 # Repository refactor validation
 
 Validated locally on 2026-11-01. This is a record of completed software/reproduction

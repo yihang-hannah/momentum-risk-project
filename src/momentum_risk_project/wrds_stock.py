@@ -1,0 +1,181 @@
+"""Explicit read-only WRDS extraction for configurable stock research windows.
+
+Requires an existing WRDS .pgpass entry and annual CRSP access. Credentials are
+never written to manifests or printed. Raw CRSP data must remain local/ignored.
+"""
+import argparse
+import datetime
+import hashlib
+import json
+from pathlib import Path
+import pandas as pd
+import psycopg2
+import pyarrow as pa
+import pyarrow.parquet as pq
+from .wml_pipeline import build_wml, membership_digest
+
+QUERIES = {'calendar': "SELECT * FROM crsp_a_stock.metaexchangecalendar WHERE caldt BETWEEN '1961-01-01' AND '2011-12-31' ORDER BY caldt", 'delists': "SELECT * FROM crsp_a_stock.stkdelists WHERE delistingdt BETWEEN '1961-01-01' AND '2012-12-31' ORDER BY permno,delistingdt", 'security_history': "SELECT permno,secinfostartdt,secinfoenddt,securitybegdt,securityenddt,primaryexch,conditionaltype,tradingstatusflg,securitynm,usincflg,issuertype,securitytype,securitysubtype,sharetype,securityactiveflg FROM crsp_a_stock.stksecurityinfohist WHERE secinfostartdt<='2011-12-31' AND secinfoenddt>='1961-01-01' ORDER BY permno,secinfostartdt", 'monthly_enriched': "SELECT m.permno,m.mthcaldt,m.mthret,m.mthretx,m.mthprc,m.mthprcflg,m.mthprcdt,m.mthdtflg,m.mthprevprc,m.mthprevdt,m.mthcap,m.mthprevcap,m.mthretflg,m.mthdelflg,m.mthcompflg,m.mthcompsubflg,m.mthdiscnt,m.mthprcvolmisscnt,m.securitytype,m.securitysubtype,m.sharetype,m.conditionaltype,m.primaryexch,m.tradingstatusflg,m.usincflg,m.issuertype,m.ticker,m.issuernm,n.shrcd AS legacy_shrcd,n.exchcd AS legacy_exchcd\n FROM crsp_a_stock.msf_v2 m LEFT JOIN crsp_a_stock.msenames n ON m.permno=n.permno AND m.mthcaldt BETWEEN n.namedt AND n.nameendt\n WHERE m.mthcaldt BETWEEN '1961-01-01' AND '2011-12-31' ORDER BY m.permno,m.mthcaldt", 'legacy_monthly': "SELECT permno,date,ret,retx,prc,shrout FROM crsp_a_stock.msf WHERE date BETWEEN '1961-01-01' AND '2011-12-31' ORDER BY permno,date", 'flags': 'SELECT flagtype,flagvalue,flagtypedesc,flagdesc,flagdef FROM crsp_a_stock.metaflaginfo ORDER BY flagtype,flagvalue'}
+
+PRICE_GAP_SQL = "WITH calendar AS (\n SELECT caldt,row_number() OVER (ORDER BY caldt) AS day_number\n FROM crsp_a_stock.metaexchangecalendar WHERE tradingflg='Y' AND exchangegroup='CIZ' AND caldt BETWEEN '1961-01-01' AND '2011-12-31'\n), prices AS (\n SELECT DISTINCT permno,dlycaldt AS price_date FROM crsp_a_stock.dsf_v2\n WHERE dlycaldt BETWEEN '1961-01-01' AND '2011-12-31' AND dlyprc>0 AND dlyprcflg IN ('TR','BA')\n), sequence AS (\n SELECT permno,price_date,lead(price_date) OVER (PARTITION BY permno ORDER BY price_date) AS next_price_date FROM prices\n)\nSELECT s.permno,s.price_date AS previous_price_date,s.next_price_date,\n c.day_number AS previous_price_number,COALESCE(n.day_number,(SELECT max(day_number)+1 FROM calendar)) AS next_price_number,\n g.caldt AS exclusion_start_date,\n COALESCE(n.caldt,DATE '2012-01-01') AS exclusion_end_exclusive\nFROM sequence s JOIN calendar c ON s.price_date=c.caldt\nLEFT JOIN calendar n ON s.next_price_date=n.caldt\nJOIN calendar g ON g.day_number=c.day_number+201\nWHERE COALESCE(n.day_number,(SELECT max(day_number)+1 FROM calendar))-c.day_number>201\nORDER BY s.permno,s.price_date\n"
+
+
+def connect_readonly():
+    entries=[]
+    path=Path.home()/'.pgpass'
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if line and not line.startswith('#'):
+                fields=line.split(':',4)
+                if len(fields)==5 and 'wrds' in fields[0].lower():entries.append(fields[:4])
+    if not entries:
+        raise RuntimeError('An existing WRDS login configuration is required; no credentials are stored by this tool')
+    host,port,database,username=entries[0]
+    return psycopg2.connect(host=host,port=port if port!='*' else '9737',
+       dbname=database if database!='*' else 'wrds',user=username,connect_timeout=20,
+       application_name='momentum_research_readonly',
+       options='-c default_transaction_read_only=on -c statement_timeout=600000')
+
+
+def _hash(path):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda:f.read(1024*1024),b''):h.update(chunk)
+    return h.hexdigest()
+
+
+def _extract(connection,sql,path,cursor_name):
+    partial=path.with_suffix('.partial.parquet')
+    writer=None;count=0
+    try:
+        with connection.cursor(name=cursor_name) as cursor:
+            cursor.itersize=100000;cursor.execute(sql)
+            while True:
+                rows=cursor.fetchmany(100000)
+                if not rows:break
+                data=pd.DataFrame(rows,columns=[c[0] for c in cursor.description])
+                for col in data:
+                    if any(isinstance(v,__import__('decimal').Decimal) for v in data[col].head(200).dropna()):
+                        data[col]=pd.to_numeric(data[col]).astype(float)
+                table=pa.Table.from_pandas(data,preserve_index=False)
+                if writer is None:writer=pq.ParquetWriter(partial,table.schema,compression='zstd')
+                if table.schema!=writer.schema:table=table.cast(writer.schema)
+                writer.write_table(table);count+=len(data)
+        if writer:writer.close();writer=None
+        if count==0:raise RuntimeError('Extraction returned no rows; refusing an empty cache')
+        connection.commit()
+        partial.rename(path)
+        return count
+    except Exception:
+        if writer:writer.close()
+        connection.rollback()
+        partial.unlink(missing_ok=True)
+        raise
+
+
+def extraction_queries(start, end):
+    """Expand the frozen template dates without altering old cache defaults."""
+    start = str(pd.Timestamp(start).date())
+    end_date = pd.Timestamp(end)
+    end = str(end_date.date())
+    if pd.Timestamp(start) >= end_date:
+        raise ValueError('Extraction end must follow start')
+    next_end = str((end_date + pd.DateOffset(years=1)).date())
+    exclusive = str((end_date + pd.Timedelta(days=1)).date())
+    def expand(sql):
+        return (sql.replace('1961-01-01', start).replace('2011-12-31', end)
+                .replace('2012-12-31', next_end).replace('2012-01-01', exclusive))
+    return {name:expand(sql) for name,sql in {**QUERIES,'price_gap_intervals':PRICE_GAP_SQL}.items()}
+
+
+def download_cache(cache_dir,*,resume=False,start='1925-12-01',end='2025-12-31',progress=print):
+    root=Path(cache_dir)
+    manifest_path=root/'cache_manifest.json'
+    if root.exists() and (not resume or not manifest_path.exists()):
+        raise FileExistsError('Use a new cache directory, or --resume for a documented interrupted extraction')
+    root.mkdir(parents=True,exist_ok=True)
+    if manifest_path.exists():
+        manifest=json.loads(manifest_path.read_text())
+    else:
+        manifest={'source_schema':'crsp_a_stock','requested_start':start,'requested_end':end,
+          'extraction_started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+          'connection_mode':'read-only','files':{},'status':'in_progress'}
+        manifest_path.write_text(json.dumps(manifest,indent=2)+'\n')
+    def save():manifest_path.write_text(json.dumps(manifest,indent=2)+'\n')
+    if resume and manifest.get('status')=='complete':
+        for key,entry in manifest['files'].items():
+            relative=Path(key) if str(key).endswith('.parquet') else Path(str(key)+'.parquet')
+            if not (root/relative).exists() or _hash(root/relative)!=entry['sha256']:
+                raise RuntimeError('Completed cache failed fingerprint verification')
+        progress('Completed cache verified; no network request required')
+        return manifest
+    if manifest.get('requested_start',start)!=start or manifest.get('requested_end',end)!=end:
+        raise ValueError('Resume dates must match the original extraction')
+    connection=connect_readonly()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT min(mthcaldt),max(mthcaldt) FROM crsp_a_stock.msf_v2')
+            lo,hi=cursor.fetchone()
+        observed={'first':str(lo),'last':str(hi)}
+        if 'source_observed_coverage' in manifest and manifest['source_observed_coverage']!=observed:
+            raise RuntimeError('Source coverage changed; use a new directory rather than mixing snapshots')
+        manifest['source_observed_coverage']=observed;save();connection.commit()
+        queries=extraction_queries(start,end)
+        for name,sql in queries.items():
+            path=root/f'{name}.parquet'
+            if path.exists():
+                if manifest['files'].get(name,{}).get('sha256')!=_hash(path):
+                    raise RuntimeError('Existing cache fingerprint mismatch')
+                progress(f'Validated existing cache: {name}');continue
+            rows=_extract(connection,sql,path,'extract_'+name)
+            manifest['files'][name]={'rows':rows,'sha256':_hash(path),'sql':sql,
+                 'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()};save()
+            progress(f'Saved {name}: {rows:,} rows')
+        monthly=pd.read_parquet(root/'monthly_enriched.parquet')
+        gaps=pd.read_parquet(root/'price_gap_intervals.parquet')
+        first=pd.to_datetime(monthly.mthcaldt).min().to_period('M')
+        built=build_wml(monthly,pd.read_parquet(root/'delists.parquet'),start=str(first+13),end=str(pd.Period(end,freq='M')),price_intervals=gaps)
+        holdings=built.holdings
+        digest=membership_digest(holdings)
+        if manifest.get('membership_digest') not in (None,digest):
+            raise RuntimeError('Formation universe changed; use a new cache')
+        if manifest.get('membership_digest') is None and any(str(k).startswith('held_daily/') for k in manifest['files']):
+            raise RuntimeError('Legacy partial daily selection is unverified; use a new cache')
+        manifest['membership_digest']=digest
+        manifest['formation_policy']=built.audit['formation_policy'];save()
+        holdings=holdings.loc[holdings.momentum_decile.isin([1,10])].copy()
+        holdings['year']=holdings.month.dt.year
+        holdings['yyyymm']=holdings.month.dt.year*100+holdings.month.dt.month
+        daily_dir=root/'held_daily';daily_dir.mkdir(exist_ok=True)
+        for year,group in holdings.groupby('year'):
+            path=daily_dir/f'{year}.parquet';key=f'held_daily/{year}'
+            if path.exists():
+                if manifest['files'].get(key,{}).get('sha256')!=_hash(path):raise RuntimeError('Daily fingerprint mismatch')
+                continue
+            with connection.cursor() as cursor:
+                values=','.join(cursor.mogrify('(%s,%s)',(int(s),int(m))).decode()
+                      for s,m in group[['permno','yyyymm']].itertuples(index=False,name=None))
+            sql=f"""WITH requested(permno,yyyymm) AS (VALUES {values})
+ SELECT d.permno,d.dlycaldt,d.dlydelflg,d.dlyret::float8,d.dlyretx::float8,d.dlyprc::float8,d.dlyprcflg,d.dlyretmissflg,d.dlyretdurflg,d.dlyprevdt,d.dlycumfacpr::float8
+ FROM crsp_a_stock.dsf_v2 d JOIN requested r ON d.permno=r.permno AND (d.yyyymmdd/100)=r.yyyymm
+ WHERE d.dlycaldt>='{year}-01-01' AND d.dlycaldt<='{year}-12-31' ORDER BY d.dlycaldt,d.permno,d.dlydelflg"""
+            rows=_extract(connection,sql,path,'daily_'+str(year))
+            manifest['files'][key]={'rows':rows,'sha256':_hash(path),
+              'selection':'formed P1/P10 stock-months; no holding-month security filter',
+              'requested_stock_months':len(group),'completed_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()};save()
+            progress(f'Saved daily holdings {year}: {rows:,} rows')
+        manifest['status']='complete';save()
+    finally:connection.close()
+    return manifest
+
+
+def main(argv=None):
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--cache-dir',type=Path,required=True)
+    p.add_argument('--resume',action='store_true')
+    p.add_argument('--start',default='1925-12-01')
+    p.add_argument('--end',default='2025-12-31')
+    a=p.parse_args(argv)
+    download_cache(a.cache_dir,resume=a.resume,start=a.start,end=a.end)
+
+
+if __name__=='__main__':main()

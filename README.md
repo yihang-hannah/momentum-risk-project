@@ -2,11 +2,15 @@
 
 ## Current progress
 
-**Latest completed commit:** `ff8eca5` — `feat: complete KF momentum data pipeline and paper replication` (on the former `feature/data-pipeline` branch; rename/push status should be checked on GitHub). This commit contains **Notebook 01, Notebook 02, five Python source modules, and four test files**.
+**Updated 2026-11-01 — local working-tree status.** Notebooks 03–05 and their reusable modules are implemented and executed locally; this does not imply that they have been committed, pushed, or merged. Notebook 02 remains identical to the checked GitHub-main baseline (`1437301c19cbffb787c253a5f3b9a7727eca3dae`). The latest full test run passed **93 tests**.
 
-**Work Completed So Far:** momentum data exploration; replication of Barroso and Santa-Clara (2015) using Kenneth French **value-weighted momentum decile P10 − P1**; a 126-trading-day squared-return volatility estimator; lagged volatility-managed exposure; unmanaged/fixed-leverage/managed comparisons; factor regressions; performance reporting; and automated unit tests.
+- **Notebook 03 — Stock-level WML construction:** current CRSP formation/price-quality screens, missing-return and delisting policies, monthly/daily reconstruction, KF comparisons, source audits and a fingerprinted reusable build are implemented. Ordinary missing stock returns use the accepted zero assumption; unknown terminal payoffs remain unresolved in the strict policy.
+- **Notebook 04 — Cost-aware backtest lab:** the factor-level backtest is unpacked into explanatory cells and reconciled against the reusable engine. Its turnover is a factor-scaling proxy, not constituent-stock turnover.
+- **Notebook 05 — Reconstructed WML with stock costs:** stock entries, exits, drift, Appendix B turnover diagnostics, funded-account fees, cost sensitivity, KF comparisons and historical/extension results are implemented. Complete performance uses published-return stock-reference valuations and **shared KF risk weights**; it is not a complete independent stock-risk replication.
 
-**Key replication results (historical paper-era sample):** unmanaged WML annualized mean **14.86%**, volatility **27.42%**, Sharpe **0.5419**; volatility-managed WML annualized mean **16.69%**, volatility **16.77%**, Sharpe **0.9958**. These are gross historical research outputs, not live trading results.
+**Current finding:** At 10bp per dollar traded, the historical common-window funded-account Sharpe rises from **0.474 to 0.900** after risk management; in 2012–2025 it rises from **0.105 to 0.270**. Tail-risk improvement persists, but extension profitability is weak. Strict own-stock daily gaps currently leave no complete month-end 126-session risk forecasts; missing forecasts are never replaced by cash.
+
+**Separate gross KF replication snapshot (Notebook 02):** unmanaged annualized mean **14.86%**, volatility **27.42%**, Sharpe **0.5419**; managed mean **16.69%**, volatility **16.77%**, Sharpe **0.9958**. These gross benchmark results must not be confused with Notebook 05's net stock-reference results.
 
 ## 1. Project overview
 
@@ -22,26 +26,27 @@ We replicate the volatility-management approach in **Barroso and Santa-Clara (20
 ```text
 momentum-risk-project/
 ├── README.md
-├── pyproject.toml              
-├── uv.lock                     
+├── pyproject.toml / uv.lock
+├── WML_PIPELINE.md / CIZ_FLAGS.md / STOCK_RESEARCH.md / BACKTEST.md
 ├── notebooks/
 │   ├── 01_data_exploration.ipynb
-│   └── 02_paper_replication.ipynb
-├── src/
-│   └── momentum_risk_project/
-│       ├── data.py
-│       ├── wml.py
-│       ├── volatility.py
-│       ├── strategies.py
-│       └── metrics.py
-└── tests/
-    ├── test_data.py
-    ├── test_metrics.py
-    ├── test_strategies.py
-    └── test_volatility.py
+│   ├── 02_paper_replication.ipynb
+│   ├── 03_wml_construction.ipynb
+│   ├── 04_cost_aware_backtest_lab.ipynb
+│   └── 05_reconstructed_wml_stock_cost_backtest.ipynb
+├── src/momentum_risk_project/
+│   ├── data.py / wml.py / volatility.py / strategies.py / metrics.py
+│   ├── backtest.py / cli.py
+│   ├── wml_pipeline.py / ranking.py / ciz_quality.py
+│   ├── stock_reconstruction.py / daily_portfolio.py / wrds_stock.py
+│   └── stock_backtest.py / stock_turnover.py / paper_turnover.py
+├── scripts/run_stock_cost_study.py
+├── tests/
+├── data/                       # Licensed raw data and reusable local artifacts
+└── outputs/                    # Latest notebook reports; see outputs/README.md
 ```
 
-`wml.py` is committed as a reusable stock-level momentum utility, but **it is not required to run the validated Notebook 02 replication**. See the module reference below. Local raw data, generated caches, and figures are not guaranteed to be present in the repository.
+This is the current local layout, including work not yet published to GitHub. `wml.py` is the earlier stock-level utility; **`wml_pipeline.py` is the authoritative Notebook 03 construction API used by Notebook 05**. Licensed raw data and processed stock artifacts are Git-ignored and are not supplied by a fresh clone. Read [data/README.md](data/README.md) and [outputs/README.md](outputs/README.md) before regenerating or cleaning files.
 
 ## 3. Required software and first-time setup
 
@@ -132,6 +137,60 @@ w_{t-1}=\frac{0.12/\sqrt{12}}{\widehat{\sigma}_{WML,t-1}},
 | Managed, 2× cap | 16.69% | 16.76% | 0.9956 |
 
 The uncapped leverage reached approximately 2.094× and exceeded 2× in only two months. These are historical replication outputs, **not** out-of-sample performance or evidence of a tradable net-of-cost strategy. Data-library updates can change exact values.
+
+### Notebook 03 — Stock-level WML construction and KF reconciliation
+
+[Open Notebook 03](notebooks/03_wml_construction.ipynb). **Status:** implemented and executed; the strict valuation and independent daily-risk gaps below remain unresolved.
+
+- Reconstruct monthly value-weighted deciles from WRDS CRSP CIZ data using historical ordinary-share/exchange eligibility, NYSE momentum breakpoints and prior-month capitalization. Apply the current period-end price/date quality screens at formation and t-13; stale last-available quotes are not treated as observed month-end prices.
+- Use the documented KF 12-2 ranking screen, with the CIZ/legacy missing-code correspondence explicitly qualified. Ordinary holding-period stock-return gaps are zero under the accepted research assumption, not claimed as a fully documented KF rule.
+- Attach delisting evidence: recover known excluded payoffs once, avoid adding already included payoffs twice, and preserve unknown terminal values under the strict DM policy. Keep the complete published-return reference as a separate, explicitly conditional valuation policy.
+- Reconstruct monthly-formed daily stock legs with the calendar/price-gap audit and protected special, multi-session and terminal-return cases. Compare monthly WML against KF, including the August 1935 price-quality diagnostic and source-version checks. The historical monthly reference MAE is about **13.91bp**, versus **47.43bp** in the extension; source vintages and construction details are not proven identical to KF.
+- Export the fingerprinted build consumed by Notebook 05: `data/processed/wml_current_v1_20261031/`. The implementation is reusable through `load_build`, `estimate_risk`, `build.targets` and `build.backtest`, without copying notebook logic.
+
+**Current boundary:** The strict checked daily series has no complete month-end 126-session forecasts in the evaluated windows. Unknown terminal values also interrupt the strict monthly account. Complete comparison tables therefore use the published-return reference and shared KF risk; they do not establish a full independent managed-stock backtest. Reports are in `outputs/03_wml/`. See [WML_PIPELINE.md](WML_PIPELINE.md), [CIZ_FLAGS.md](CIZ_FLAGS.md) and [STOCK_RESEARCH.md](STOCK_RESEARCH.md) for rules, source references and remaining qualifications.
+
+### Notebook 04 — Cost-aware backtest, step-by-step lab
+
+[Open Notebook 04](notebooks/04_cost_aware_backtest_lab.ipynb). **Status:** implemented, executed and reconciled against `backtest.py`.
+
+The notebook exposes the calculation before calling the packaged engine: existing KF deciles → WML → squared-return risk → previous-month weight → factor-scaling turnover proxy → trading/financing costs → net wealth and metrics. Intermediate tables and Markdown explain the timing and accounting. The notebook checks the complete ledger and metrics against the reusable implementation at the end.
+
+**Scope:** this is the teaching/MVP factor-level calculation. Constant unmanaged factor weight omits ongoing stock reconstitution and therefore understates trading costs. The optional financing spread above factor weight one is a simplifying sensitivity, not a broker funding model; its illustrative lab default is distinct from Notebook 05's zero-financing study. Use Notebook 05 for constituent-stock costs. Executed lab outputs are embedded in the notebook; separate CLI exports are documented in [BACKTEST.md](BACKTEST.md) and currently retained under `outputs/04_backtest/`.
+
+### Notebook 05 — Reconstructed WML, stock turnover and net performance
+
+[Open Notebook 05](notebooks/05_reconstructed_wml_stock_cost_backtest.ipynb). **Status:** implemented and fully executed, including cost sensitivities and qualitative paper comparisons.
+
+**Evaluation windows:**
+
+- **1927-05–2011-12:** available common historical sample. March–April 1927 are excluded because the public KF daily series lacks the full required warm-up.
+- **1951-03–2010-12:** the paper's separate stock-level turnover test, used to compare turnover and significance cutoffs.
+- **2012-01–2025-12:** disjoint post-sample extension. It is not entirely post-publication.
+
+**Accounting and validation:**
+
+- Read Notebook 03's validated artifact; compare rebuilt and KF monthly WML on identical calendars and shared lagged KF risk weights. No missing risk forecast is converted into zero exposure or cash.
+- Include constituent entries, exits, leg switches and return drift. Appendix B diagnostics normalize drift within each leg and sum half absolute changes across both legs. The local manuscript's printed managed equation divides by the risk multiplier, while returns multiply by it; show both the literal inverse-multiplier diagnostic and the actual scaled-position diagnostic rather than silently resolving that ambiguity.
+- Separately simulate a continuous self-funded stock account, using after-fee NAV targets, ex-distribution price drift, distribution cash and known delisting settlement. Subperiod evaluations do not introduce new entry fees. No terminal liquidation fee is charged.
+- Test **0, 5, 10, 25 and 50bp per dollar traded**, with financing zero. A 10bp one-way charge corresponds to a 20bp roundtrip rate when applied to Appendix B half-turnover. Significance cutoffs use a labeled IID Student-t calculation, not an asserted replication of the authors' inference implementation.
+
+**Results at 10bp per dollar traded, unmanaged → managed:**
+
+- Historical common window: annual mean **13.00% → 15.07%**, Sharpe **0.474 → 0.900**, worst month **−78.26% → −24.78%**.
+- Paper turnover-test window: actual scaled-position mean monthly half-turnover **71.32% → 73.40%**; IID roundtrip significance cutoff **120.4bp → 175.5bp**. This supports the paper's direction of a small turnover increase and greater cost resilience, without claiming exact replication. The literal inverse-multiplier managed turnover is **92.61%**, so that convention gives a different comparison.
+- Extension: annual mean **2.84% → 3.22%**, Sharpe **0.105 → 0.270**, volatility **27.12% → 11.92%**, worst month **−29.66% → −11.58%**. Risk mitigation persists, but neither strategy's gross mean is significant in the stated IID test.
+
+**Interpretation:** These are conditional published-return stock-reference results with shared KF risk weights. They support several qualitative paper observations, but unresolved terminal values and own-stock daily-risk gaps prevent a complete independent replication. Borrow fees, rebates, time-varying impact and intramonth settlement are not identified by the current inputs.
+
+**Reproduce offline from the repository root**, with the retained licensed inputs present:
+
+```bash
+uv run python scripts/run_stock_cost_study.py --cost-bps 0 5 10 25 50
+uv run pytest -p no:cacheprovider tests/ -q
+```
+
+Then run Notebook 05, or set its `RERUN_STUDY=True`. The notebook checks saved input/code fingerprints before displaying results. Current tables, coverage, plots and the run manifest are in `outputs/05_stock_backtest/`; licensed stock transitions and funded trades are in ignored `data/processed/05_stock_backtest/`.
 
 ## 5. Python module reference
 
@@ -226,7 +285,17 @@ portfolio_returns, holdings = compute_aligned_wml(signals)
 
 **Research caution:** This is a reusable baseline, not a claim of exact DM replication. Formation-date CIZ screens and missing holding returns require explicit documentation and validation.
 
+### Current stock construction and cost modules
+
+- `wml_pipeline.py`: authoritative Notebook 03 build, explicit valuation policies, checked daily reconstruction, lagged risk estimation, fingerprinted artifacts and stock-account API. See [WML_PIPELINE.md](WML_PIPELINE.md).
+- `ranking.py`, `ciz_quality.py`, `stock_reconstruction.py`, `daily_portfolio.py`: ranking eligibility, formation-price screens, monthly portfolios/delisting reconciliation and daily leg reconstruction. `wrds_stock.py` supplies resumable read-only cache acquisition.
+- `backtest.py`, `cli.py`: factor-proxy cost engine and reproducible exports used by the Notebook 04 lab; see [BACKTEST.md](BACKTEST.md).
+- `stock_backtest.py`: funded stock-account fees, drift and unknown-state propagation. `paper_turnover.py`: separate Appendix B leg-normalized turnover diagnostics and IID significance cutoffs used in Notebook 05. `stock_turnover.py` is an earlier gross-NAV stock-turnover diagnostic, not the Appendix B calculation.
+- `scripts/run_stock_cost_study.py`: offline Notebook 05 study and result export. Historical experiment entrypoints are not the current construction API.
+
 ## 6. Automated tests
+
+The latest local suite passed **93 tests**, including the Notebook 03 pipeline and Notebook 05 stock-turnover additions. Checks cover fingerprints and round trips, valuation/terminal-payoff policies, risk timing, stock entries/exits and leg switches, both multiplier conventions, unknown-return propagation, self-funded fees and cutoff units. Executed notebooks additionally reconcile complete result calendars, zero-cost gross returns and trade/fee aggregation.
 
 Tests are executable checks of behavior and edge cases, not a replacement for financial/economic validation.
 
@@ -339,4 +408,4 @@ Remember: `ieor4576` is the **remote alias**; `momentum-risk-project` is the **G
 
 ---
 
-**Repository:** [yihang-hannah/momentum-risk-project](https://github.com/yihang-hannah/momentum-risk-project). **Published research covered by this README: Notebook 01 and Notebook 02.**
+**Repository:** [yihang-hannah/momentum-risk-project](https://github.com/yihang-hannah/momentum-risk-project). **Local research covered by this README: Notebooks 01–05.** Publication status must be checked separately; local completion does not imply a GitHub push or merge.

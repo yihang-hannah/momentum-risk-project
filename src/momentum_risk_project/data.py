@@ -6,7 +6,9 @@ import pandas as pd
 from pandas_datareader import data as web
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from .paths import project_root
+
+PROJECT_ROOT = project_root()
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
@@ -203,3 +205,9 @@ def load_wml_decile_returns(refresh: bool = False) -> tuple[pd.Series, pd.Series
     """Return daily and monthly KF value-weighted P10-P1 as `wml` Series."""
     daily, monthly = load_momentum_returns(refresh=refresh)
     return daily["mom"].rename("wml"), monthly["mom"].rename("wml")
+
+
+def acquire_inputs(config, root=None, *, download=False):
+    """Course acquisition interface, implemented by the ordered pipeline."""
+    from .pipeline import get_data
+    return get_data(config, project_root(root), download=download)

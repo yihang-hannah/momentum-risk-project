@@ -1,7 +1,7 @@
 [project]
 name = "momentum-risk-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "Reproducible momentum risk-management replication and stock-level cost study"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -20,16 +20,29 @@ dependencies = [
 ]
 
 [project.scripts]
-momentum-risk-project = "momentum_risk_project:main"
+momentum-risk-project = "momentum_risk_project.pipeline:main"
 
 [build-system]
-requires = ["uv_build>=0.13.1,<0.14.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "ipykernel>=7.4.0",
     "jupyter>=1.1.1",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
 ]
+
+[dependency-groups]
+dev = [{include-group = "test"}]
+test = ["pytest>=9.1.1", "ipykernel>=7.4.0", "jupyter>=1.1.1", "ruff>=0.17.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.setuptools.packages.find]
+where = ["src"]

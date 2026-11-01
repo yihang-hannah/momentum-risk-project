@@ -1644,8 +1644,22 @@ dependencies = [
     { name = "wrds" },
 ]
 
+[package.optional-dependencies]
+dev = [
+    { name = "ipykernel" },
+    { name = "jupyter" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
 [package.dev-dependencies]
 dev = [
+    { name = "ipykernel" },
+    { name = "jupyter" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+test = [
     { name = "ipykernel" },
     { name = "jupyter" },
     { name = "pytest" },
@@ -1655,21 +1669,32 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "arch", specifier = ">=8.0.0" },
+    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pandas", specifier = "==3.0.6" },
     { name = "pandas-datareader", specifier = ">=0.11.1" },
     { name = "plotly", specifier = ">=7.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.17.1" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "statsmodels", specifier = ">=0.15.0" },
     { name = "streamlit", specifier = ">=1.66.0" },
     { name = "wrds", specifier = ">=3.1.6" },
 ]
+provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "ipykernel", specifier = ">=7.4.0" },
+    { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.17.1" },
+]
+test = [
     { name = "ipykernel", specifier = ">=7.4.0" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "pytest", specifier = ">=9.1.1" },

@@ -1,9 +1,14 @@
+> Current layout: the four ordered scripts and `run_all.py` generate all official
+> reports under `results/replication` and `results/extension`. Notebook execution
+> is optional validation. See README for authoritative reproduction commands;
+> historical experiments below are methodological evidence, not pipeline inputs.
+
 # Current WML construction API
 
 The authoritative implementation of Notebook 03's current method is
 `momentum_risk_project.wml_pipeline`. Notebook 05 should use this API or its
 fingerprinted artifacts, rather than copy cells or call a historical experiment.
-Notebook 02 remains unchanged on GitHub main.
+Notebook 02 retains independent derivations and checks package-generated reports.
 
 ## Build once, use in Notebook 05
 
@@ -21,7 +26,7 @@ rebuild_daily(build, Path('data/raw/03_quality_daily_20261031'))
 save_build(build, Path('data/processed/wml_new'))  # New path; no overwrites.
 
 # Notebook 05:
-build = load_build(Path('data/processed/wml_current_v1_20261031'))
+build = load_build(Path('data/processed/wml_current'))
 months = pd.period_range('2012-01', '2025-12', freq='M')
 weights = pd.Series(1.0, index=months)  # Unmanaged example.
 ledger, trades = build.backtest(
@@ -148,5 +153,5 @@ cutoff uses a labeled IID Student-t test, not an asserted paper-exact SE method.
 Complete results remain published-return references using shared KF risk.
 Unknown strict monthly/daily valuations are preserved, and missing own-risk
 forecasts are never interpreted as cash. Licensed stock transition and trade
-files stay under ignored `data/processed/05_stock_backtest`; figures and monthly
-results are in `outputs/05_stock_backtest`.
+files stay under ignored `data/processed/stock_study/stock_trades`; figures and monthly
+results are in `data/processed/stock_study`.

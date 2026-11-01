@@ -1,43 +1,22 @@
-
-# ==========================================
-# Python-generated files
-# ==========================================
+# Python, environments and local tooling
 __pycache__/
 *.py[cod]
+*.egg-info/
 build/
 dist/
 wheels/
-*.egg-info/
-
-# ==========================================
-# Virtual environments
-# ==========================================
 .venv/
-
-# ==========================================
-# Development tool caches
-# ==========================================
 .pytest_cache/
 .ruff_cache/
 .ipynb_checkpoints/
-
-# ==========================================
-# macOS system files
-# ==========================================
 .DS_Store
 
-# ==========================================
-# Downloaded and processed data
-# ==========================================
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# Provider data and all generated research assets
+data/
+results/
+notebooks/archive/
 
-# ==========================================
-# Generated figures and tables
-# ==========================================
-outputs/figures/*
-outputs/tables/*
-!outputs/figures/.gitkeep
-!outputs/tables/.gitkeep
+# Local secrets
+.env
+.env.*
+!.env.example

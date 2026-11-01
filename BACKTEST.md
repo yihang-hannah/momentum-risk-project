@@ -1,3 +1,8 @@
+> Current layout: the four ordered scripts and `run_all.py` generate all official
+> reports under `results/replication` and `results/extension`. Notebook execution
+> is optional validation. See README for authoritative reproduction commands;
+> historical experiments below are methodological evidence, not pipeline inputs.
+
 # Cost-aware momentum MVP
 
 This additive engine reuses `data.py`, `volatility.py`, `strategies.py`, and
@@ -11,7 +16,7 @@ uv run python -m momentum_risk_project.cli \
   --monthly data/raw/02_kf_momentum_deciles_monthly_vw.parquet \
   --raw-deciles --start 1927-05 --end 2011-12 \
   --transaction-cost-bps 10 --financing-cost-bps 100 \
-  --output-dir outputs/backtest_10bps_100fin
+  --output-dir results/factor_proxy_cli_new
 uv run pytest tests/ -v
 ```
 
@@ -85,4 +90,4 @@ annual incremental financing, managed net mean is 16.4176%, volatility
 Unmanaged net mean is 14.8573% and Sharpe 0.541793; its near-zero ongoing
 cost is a limitation of the proxy, not evidence that momentum is cheap to trade.
 The input fingerprints and detailed ledger are in the new
-`outputs/04_backtest/` directory.
+`results/replication/tables/paper_available_common/` directory.

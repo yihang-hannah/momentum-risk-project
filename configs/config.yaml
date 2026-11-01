@@ -1,0 +1,41 @@
+# Reproducible baseline; EWMA/GARCH remain separate planned extensions.
+seed: 4576
+paths:
+  raw_cache: data/raw/03_stock_full_20261031
+  daily_cache: data/raw/03_quality_daily_20261031
+  stock_inputs: data/interim/stock_inputs
+  build: data/processed/wml_current
+  study: data/processed/stock_study
+  results: results
+  kf_daily: data/raw/02_kf_momentum_deciles_daily_vw.parquet
+  kf_monthly: data/raw/02_kf_momentum_deciles_monthly_vw.parquet
+  ff3: data/raw/02_ff3_monthly_decimal_20261031.parquet
+periods:
+  raw_start: '1925-12-01'
+  build_start: '1927-01'
+  end: '2025-12'
+  study_start: '1927-05'
+windows:
+  paper_available_common: ['1927-05', '2011-12']
+  paper_turnover_test: ['1951-03', '2010-12']
+  extension_disjoint: ['2012-01', '2025-12']
+universe:
+  share_codes: [10, 11]
+  exchange_codes: [1, 2, 3]
+  ranking: '12-2'
+  weighting: value
+  formation_price_policy: period_end_TR_BA
+risk:
+  annual_target: 0.12
+  window: 126
+  trading_days_per_month: 21
+  leverage_cap: 2.0
+costs:
+  transaction_cost_bps: [0, 5, 10, 25, 50]
+  baseline_bps: 10
+  financing_cost_bps: 0
+  lab_financing_cost_bps: 100
+valuation:
+  ordinary_missing: zero
+  terminal: known_once_unknown_preserved
+  complete_reference: published_reference

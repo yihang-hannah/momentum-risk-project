@@ -62,3 +62,130 @@ def test_download_cache_accepts_empty_directory(tmp_path, monkeypatch):
         download_cache(cache, resume=True)
 
     assert (cache / "cache_manifest.json").exists()
+
+def test_daily_year_resumes_verified_months(tmp_path, monkeypatch):
+    import hashlib
+
+    daily_dir = tmp_path / "held_daily"
+    group = pd.DataFrame({
+        "permno": [10001, 10002],
+        "yyyymm": [200101, 200102],
+    })
+
+    calls = []
+
+    def fake_extract(connection, sql, path, cursor_name):
+        calls.append(cursor_name)
+
+        if cursor_name == "daily_200102" and len(calls) == 2:
+            raise ConnectionError("Simulated WRDS interruption")
+
+        pd.DataFrame({
+            "permno": [10001],
+            "dlycaldt": [pd.Timestamp("2001-01-15")],
+            "dlyret": [0.01],
+        }).to_parquet(path, index=False)
+
+        return 1
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def mogrify(self, template, values):
+            return (
+                f"({values[0]},{values[1]})"
+            ).encode()
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(source, "_extract", fake_extract)
+
+    with pytest.raises(ConnectionError, match="interruption"):
+        source._extract_daily_year(
+            FakeConnection(),
+            group,
+            2001,
+            daily_dir,
+            progress=lambda _: None,
+        )
+
+    january = daily_dir / "_monthly" / "2001" / "200101.parquet"
+    assert january.exists()
+
+    source._extract_daily_year(
+        FakeConnection(),
+        group,
+        2001,
+        daily_dir,
+        progress=lambda _: None,
+    )
+
+    assert calls == [
+        "daily_200101",
+        "daily_200102",
+        "daily_200102",
+    ]
+
+    yearly = pd.read_parquet(daily_dir / "2001.parquet")
+    assert len(yearly) == 2
+
+def test_extract_empty_daily_month(tmp_path):
+    import pyarrow.parquet as pq
+
+    class FakeCursor:
+        description = [
+            (name,) for name in [
+                "permno", "dlycaldt", "dlydelflg",
+                "dlyret", "dlyretx", "dlyprc",
+                "dlyprcflg", "dlyretmissflg",
+                "dlyretdurflg", "dlyprevdt",
+                "dlycumfacpr",
+            ]
+        ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql):
+            pass
+
+        def fetchmany(self, size):
+            return []
+
+    class FakeConnection:
+        def __init__(self):
+            self.committed = False
+
+        def cursor(self, name=None):
+            return FakeCursor()
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            pass
+
+    connection = FakeConnection()
+    path = tmp_path / "empty_month.parquet"
+
+    rows = source._extract(
+        connection,
+        "SELECT ...",
+        path,
+        "daily_200101",
+    )
+
+    assert rows == 0
+    assert connection.committed
+    assert path.exists()
+    assert pq.read_table(path).num_rows == 0
+    assert len(pq.read_table(path).column_names) == 11    

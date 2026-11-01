@@ -1,0 +1,8 @@
+statistic,value
+Observations,168
+Mean Loss Difference,0.0001489420864
+HAC t-statistic,1.008460431
+Two-sided p-value,0.3132334742
+95% CI Lower,-0.0001405299801
+95% CI Upper,0.000438414153
+HAC Lags,3

@@ -1,0 +1,23 @@
+\begin{table}[htbp]
+\centering
+\caption{Out-of-Sample Volatility Forecast Accuracy}
+\label{tab:garch_forecast_accuracy}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Estimator & MAE & RMSE & Bias & Correlation \\
+\midrule
+\multicolumn{5}{l}{\textit{August 1929--December 2011}} \\
+Historical volatility (126-day) & 0.0173 & 0.0292 & 0.0008 & 0.723 \\
+GARCH(1,1) & 0.0153 & 0.0251 & 0.0012 & 0.797 \\
+\midrule
+\multicolumn{5}{l}{\textit{January 2012--December 2025}} \\
+Historical volatility (126-day) & 0.0227 & 0.0315 & 0.0023 & 0.662 \\
+GARCH(1,1) & 0.0201 & 0.0291 & 0.0013 & 0.713 \\
+\bottomrule
+\end{tabular}
+\par\vspace{0.3em}
+\begin{minipage}{0.9\linewidth}
+\footnotesize\textit{Notes:} Forecasts formed at month-end are compared with the following month's realized volatility, measured as the square root of the sum of squared daily momentum returns. Both estimators use the same forecast origins within each period.
+\end{minipage}
+\end{table}

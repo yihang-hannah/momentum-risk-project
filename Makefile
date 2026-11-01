@@ -1,6 +1,6 @@
 PYTHON ?= .venv/bin/python
 CONFIG ?= configs/config.yaml
-.PHONY: all data dataset replicate extend test notebooks
+.PHONY: all data dataset replicate extend test notebooks app
 all:
 	$(PYTHON) run_all.py --config $(CONFIG)
 data:
@@ -15,3 +15,6 @@ test:
 	$(PYTHON) -m pytest -p no:cacheprovider tests/ -q
 notebooks:
 	$(PYTHON) scripts/validate_notebooks.py
+
+app:
+	$(PYTHON) -m streamlit run app/streamlit_app.py

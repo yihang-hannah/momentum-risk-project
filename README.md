@@ -11,6 +11,7 @@ The repository now follows the course hierarchy: reusable logic in `src`, four t
 - **03:** document all data sources, field/flag rules and assumptions; inspect the package-built stock WML and script-generated KF comparisons. The complete processing specification and official links remain at its beginning.
 - **04:** unpack the factor-scaling cost proxy for teaching and check the reusable engine/script report.
 - **05:** display script-generated stock-cost results and validate short stock-account/API examples.
+- **Frontend MVP (2026-11-01):** completed the English Streamlit research desk with sample/source/cost switching, interactive performance and trading charts, coverage explanations and CSV/JSON exports. All 45 saved window/accounting/fee scenarios match the original metrics; the full suite passes 110 tests. See [startup instructions](#research-frontend-mvp).
 
 Complete rebuilt-WML performance uses **published-reference monthly stock valuations and shared KF daily risk weights**. Ordinary missing stock returns use the accepted zero sensitivity; unresolved terminal payoffs remain unknown in the strict policy. Checked own-stock daily gaps currently leave no complete month-end 126-session risk forecasts. Missing forecasts are not cash, and these results are not a complete independent stock-risk replication.
 
@@ -41,6 +42,8 @@ momentum-risk-project/
 │   ├── 04_extend.py
 │   ├── run_stock_cost_study.py    # Thin compatibility wrapper
 │   └── validate_notebooks.py     # Optional display/API verification
+├── app/streamlit_app.py           # Read-only research frontend
+├── .streamlit/config.toml         # Local UI theme/server settings
 ├── notebooks/                    # Exploration/validation; never required for results
 ├── results/                      # Entirely generated/ignored; may be deleted/rebuilt
 │   ├── replication/{tables,figures}/
@@ -130,6 +133,50 @@ The output tree can be removed and regenerated with `python run_all.py`. Only fi
 
 The accepted windows are **1927-05–2011-12**, **1951-03–2010-12** (separate paper turnover check), and **2012-01–2025-12**. March–April 1927 lack the public KF daily warm-up. The extension is post-sample, not wholly post-publication. No removed auxiliary windows are restored.
 
+## Research frontend MVP
+
+**Status: implemented and browser-tested.** The app uses real verified study data, not demo values. Desktop and narrow-screen layouts, scenario switching and an actual CSV download were checked.
+
+After installing the project, activate its environment and start the interface from the repository root:
+
+```bash
+source .venv/bin/activate
+python -m streamlit run app/streamlit_app.py
+# Equivalent from the repository root:
+make app
+```
+
+Open `http://127.0.0.1:8501`. The server binds to localhost. The frontend reads
+verified saved study scenarios and does not acquire data, fit models, send
+orders or change source/config/result files. Generate the configured dataset
+with `python run_all.py` first; a fresh clone without local results shows clear
+setup instructions rather than mock performance. You do not need to rerun the pipeline for each UI change: once the saved study exists, switching views is read-only and immediate. Stop the local server with Ctrl+C in its terminal. This launch is local; pushing the code to GitHub does not host a public website.
+
+Select the historical, paper-turnover-test or extension window, rebuilt versus
+KF WML, gross/net returns, an exact saved one-way fee scenario, starting capital
+and funded/paper-style accounting. Explore interactive wealth, drawdown, monthly
+returns, actual stock turnover, fee drag, applied weights and cost sensitivity.
+Export the selected monthly series and scenario/provenance JSON. Starting capital
+only rebases displayed wealth; source returns and the continuous historical
+stock-account history are preserved.
+
+KF is explicitly gross-only because it has no constituent stock-cost ledger.
+Complete rebuilt results remain the conditional published-return reference with
+shared KF risk; the coverage tab retains the unresolved strict-stock limitations.
+No interpolated fees, invented returns or automatic cash substitution are used.
+The app exposes the current realized-volatility baseline; EWMA/GARCH selectors
+will be added after those research modules are integrated.
+
+The frontend adds 7 synthetic/AppTest checks; the full suite passes **110 tests**.
+
+Presentation lives in `app/streamlit_app.py`; read-only scenario selection,
+provenance checks and metrics delegation are in `dashboard.py`, with interactive
+charts in `dashboard_charts.py`. No existing research engine is modified.
+
+```bash
+python -m pytest tests/test_dashboard.py -q
+```
+
 ## Package API and modules
 
 - `paths.py`, `config.py`: root-relative locations, settings validation and config digest.
@@ -168,13 +215,13 @@ python -m pytest tests/test_pipeline.py -q
 make notebooks
 ```
 
-The tests use synthetic/local fixtures, not live WRDS queries. Notebook checks are optional, require generated results and validate presentation/independent derivations; they are not the production pipeline. Every notebook ends with focused module tests and the full-suite command. The complete suite currently passes **103 tests**. All existing 93 behavioral tests are retained, with 10 additional refactor tests for paths/config, immutable-cache verification, missing inputs, packaged equations/regressions and orchestration.
+The tests use synthetic/local fixtures, not live WRDS queries. Notebook checks are optional, require generated results and validate presentation/independent derivations; they are not the production pipeline. Every notebook ends with focused module tests and the full-suite command. The repository refactor passed **103 tests**; frontend tests additionally cover scenario selection, integrity/missing-data states, exports, initial drawdown and UI control behavior. All existing 93 behavioral tests are retained, with 10 additional refactor tests for paths/config, immutable-cache verification, missing inputs, packaged equations/regressions and orchestration.
 
 The refactor is checked against original numerical baselines for monthly/daily WML, risk weights, gross strategies, stock fees/ledgers, cutoff/turnover metrics and independently calculated regressions. Raw-byte fingerprints and original manifests are preserved. See [report/reproducibility.md](report/reproducibility.md) for the final validation evidence and how to repeat it. Missing economic values remain unresolved even when software tests pass.
 
 ## Team plan: frontend MVP, EWMA and GARCH
 
-The current maintainer will first complete a Streamlit frontend MVP in a future `app/streamlit_app.py`, calling the package rather than executing notebooks. It should expose available scenarios and verified result views, with valuation/risk coverage clearly labeled. The frontend itself is **not implemented by this repository-layout refactor**.
+The current maintainer has implemented the first Streamlit research frontend MVP in `app/streamlit_app.py`, calling package presentation services rather than executing notebooks. It exposes verified saved scenarios and interactive results with explicit valuation/risk coverage. Live model recomputation, broker connections and order execution are outside this MVP.
 
 The two collaborators can choose one extension each, working on their own named branches:
 

@@ -145,6 +145,41 @@ python scripts/01_get_data.py --download
 
 WRDS requires an existing account, annual CRSP access and local login configuration. No credentials are embedded in files or manifests. Provider revisions can produce different results from the frozen snapshot; acquisition records and membership fingerprints must match before daily-return filling. Do not replace a partial universe with artificial zero returns.
 
+### Optional external CRSP cache
+
+By default, CRSP data are cached inside the project directory using the
+paths defined in `configs/config.yaml`.
+
+To store large CRSP extracts outside the repository (for example, to
+avoid cloud-synced folders), set the `MOMENTUM_CRSP_CACHE` environment
+variable before running the pipeline.
+
+**Windows PowerShell:**
+
+```powershell
+$env:MOMENTUM_CRSP_CACHE = "C:\Columbia_Data\momentum-risk-project\crsp_cache"
+```
+
+**macOS/Linux:**
+
+```bash
+export MOMENTUM_CRSP_CACHE="$HOME/momentum-crsp-cache"
+```
+
+The override applies to both `raw_cache` and `daily_cache`, which share
+the same CRSP extraction. All other paths remain relative to the
+repository.
+
+The environment variable must be set in each new terminal session.
+Do not commit downloaded CRSP data or WRDS credentials to Git.
+
+After configuring the cache, run:
+
+```bash
+python scripts/01_get_data.py --download
+python run_all.py
+```
+
 `data/raw` stores the original downloaded/query-extract bytes, including their provider/extraction manifests. Query-joined provider rows are retained as originally downloaded; the validated field-selected working dataset is in `data/interim`. All original raw bytes are preserved during this refactor. Old `outputs` reports, diagnostic inputs and notebook snapshots are retained under `data/interim/research_history`, `data/interim/reference`, and `data/interim/refactor_baseline_20261101`. They are optional audit evidence, **not inputs required to regenerate current reported results**. Original provenance is retained, not rewritten to impersonate a new provider snapshot.
 
 ## Results map

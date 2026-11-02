@@ -1,0 +1,18 @@
+\begin{table}[htbp]
+\centering
+\caption{Statistical Significance of GARCH Forecast Improvements}
+\label{tab:garch_forecast_significance}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Sample & Months & Mean Loss Diff. & HAC $t$ & $p$-value \\
+\midrule
+August 1929--December 2011 & 989 & 0.000224 & 2.064 & 0.0391 \\
+January 2012--December 2025 & 168 & 0.000149 & 1.008 & 0.3132 \\
+\bottomrule
+\end{tabular}
+\par\vspace{0.3em}
+\begin{minipage}{0.9\linewidth}
+\footnotesize\textit{Notes:} The loss differential equals the squared forecast error of historical volatility minus that of GARCH(1,1). Positive values favor GARCH. Inference uses heteroskedasticity- and autocorrelation-consistent (HAC) standard errors with three lags. Reported $p$-values are two-sided.
+\end{minipage}
+\end{table}

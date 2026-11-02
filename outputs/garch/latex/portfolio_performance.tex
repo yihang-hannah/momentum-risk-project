@@ -1,0 +1,25 @@
+\begin{table}[htbp]
+\centering
+\caption{Momentum Portfolio Performance: Historical and Extension Samples}
+\label{tab:garch_portfolio_performance}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Strategy & Return (\%) & Volatility (\%) & Sharpe & Max DD (\%) & Exposure \\
+\midrule
+\multicolumn{6}{l}{\textit{August 1929--December 2011}} \\
+Unmanaged momentum & 14.10 & 27.65 & 0.510 & -95.37 & 1.000 \\
+Historical volatility (126-day) & 16.68 & 17.32 & 0.963 & -42.02 & 0.912 \\
+GARCH(1,1) & 15.77 & 16.67 & 0.946 & -34.15 & 0.881 \\
+\midrule
+\multicolumn{6}{l}{\textit{January 2012--December 2025}} \\
+Unmanaged momentum & 4.63 & 27.15 & 0.171 & -63.29 & 1.000 \\
+Historical volatility (126-day) & 4.20 & 12.47 & 0.337 & -22.51 & 0.522 \\
+GARCH(1,1) & 4.13 & 12.99 & 0.318 & -25.86 & 0.530 \\
+\bottomrule
+\end{tabular}
+\par\vspace{0.3em}
+\begin{minipage}{0.95\linewidth}
+\footnotesize\textit{Notes:} Gross returns, without transaction costs or financing costs. Annualized return is the arithmetic mean multiplied by 12; Sharpe ratios assume a zero risk-free rate. Volatility-managed strategies target 12\% annualized volatility. All strategies are evaluated on identical months within each sample.
+\end{minipage}
+\end{table}

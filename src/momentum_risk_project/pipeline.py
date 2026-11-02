@@ -27,43 +27,143 @@ def verify_cache(cache,manifest_name="cache_manifest.json"):
     return m
 
 
-def get_data(config,root, *, download=False):
-    """Reuse immutable frozen downloads; never silently refresh an existing file."""
-    root=project_root(root)
-    for key,dataset in [("kf_daily","10_Portfolios_Prior_12_2_Daily"),("kf_monthly","10_Portfolios_Prior_12_2")]:
-        path=configured_path(config,key,root)
+
+def get_data(config, root, *, download=False):
+    """Reuse frozen downloads; resume incomplete authorized acquisitions."""
+    root = project_root(root)
+
+    # Public Kenneth French momentum datasets
+    for key, dataset in [
+        ("kf_daily", "10_Portfolios_Prior_12_2_Daily"),
+        ("kf_monthly", "10_Portfolios_Prior_12_2"),
+    ]:
+        path = configured_path(config, key, root)
+
         if not path.exists():
-            if not download:raise FileNotFoundError(f"Missing {path}; run stage 01 with --download for initial public/authorized acquisition")
+            if not download:
+                raise FileNotFoundError(
+                    f"Missing {path}; run stage 01 with --download "
+                    "for initial public/authorized acquisition"
+                )
+
             from pandas_datareader import data as web
-            raw=web.DataReader(dataset,"famafrench",start="1926-01-01")[0]
-            path.parent.mkdir(parents=True,exist_ok=True);raw.to_parquet(path)
-        clean_momentum(pd.read_parquet(path),"daily" if key=="kf_daily" else "monthly")
-    ff=configured_path(config,"ff3",root)
+
+            raw = web.DataReader(
+                dataset, "famafrench", start="1926-01-01"
+            )[0]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            raw.to_parquet(path)
+
+        clean_momentum(
+            pd.read_parquet(path),
+            "daily" if key == "kf_daily" else "monthly",
+        )
+
+    # Public Fama-French three-factor dataset
+    ff = configured_path(config, "ff3", root)
+
     if not ff.exists():
-        if not download:raise FileNotFoundError(f"Missing frozen FF3 input: {ff}")
+        if not download:
+            raise FileNotFoundError(
+                f"Missing frozen FF3 input: {ff}"
+            )
+
         from pandas_datareader import data as web
-        f=web.DataReader("F-F_Research_Data_Factors","famafrench",start="1926-01-01")[0]/100
-        f.index=pd.PeriodIndex(f.index,freq="M");ff.parent.mkdir(parents=True,exist_ok=True);f.to_parquet(ff)
-    for key in ["raw_cache","daily_cache"]:
-        cache=configured_path(config,key,root)
-        if not (cache/"cache_manifest.json").exists() and download:
-            from .wrds_stock import download_cache
-            download_cache(cache,resume=cache.exists(),start=config["periods"]["raw_start"],end=str(pd.Period(config["periods"]["end"],freq="M").end_time.date()))
+
+        f = web.DataReader(
+            "F-F_Research_Data_Factors",
+            "famafrench",
+            start="1926-01-01",
+        )[0] / 100
+
+        f.index = pd.PeriodIndex(f.index, freq="M")
+        ff.parent.mkdir(parents=True, exist_ok=True)
+        f.to_parquet(ff)
+
+    # Licensed WRDS/CRSP caches
+    processed_caches = set()
+
+    for key in ["raw_cache", "daily_cache"]:
+        cache = configured_path(config, key, root)
+
+        # The two configuration keys may point to the same cache.
+        # Avoid downloading or verifying it twice.
+        if cache in processed_caches:
+            continue
+
+        processed_caches.add(cache)
+
+        manifest_path = cache / "cache_manifest.json"
+
+        if not manifest_path.exists():
+            if download:
+                from .wrds_stock import download_cache
+
+                download_cache(
+                    cache,
+                    resume=cache.exists(),
+                    start=config["periods"]["raw_start"],
+                    end=str(
+                        pd.Period(
+                            config["periods"]["end"], freq="M"
+                        ).end_time.date()
+                    ),
+                )
+
+        elif download:
+            manifest = json.loads(manifest_path.read_text())
+
+            if manifest.get("status") != "complete":
+                from .wrds_stock import download_cache
+
+                download_cache(
+                    cache,
+                    resume=True,
+                    start=config["periods"]["raw_start"],
+                    end=str(
+                        pd.Period(
+                            config["periods"]["end"], freq="M"
+                        ).end_time.date()
+                    ),
+                )
+
+        # A complete cache must pass fingerprint verification.
+        # An incomplete cache without --download is still rejected.
         verify_cache(cache)
-    # Supplemental daily manifests bind the changed membership and original base manifest.
-    daily=configured_path(config,"daily_cache",root)
-    if (daily/"membership_manifest.json").exists():
-        verify_cache(daily,"membership_manifest.json")
-        a=json.loads((daily/"membership_manifest.json").read_text())
-        if a["cache_manifest_sha256"]!=file_sha256(daily/"cache_manifest.json"):raise ValueError("Daily attestation lineage mismatch")
-    print("01: frozen public and authorized stock caches verified; no existing raw file changed")
+
+    # Supplemental daily manifests bind the changed membership
+    # and original base manifest.
+    daily = configured_path(config, "daily_cache", root)
+
+    if (daily / "membership_manifest.json").exists():
+        verify_cache(daily, "membership_manifest.json")
+
+        a = json.loads(
+            (daily / "membership_manifest.json").read_text()
+        )
+
+        if (
+            a["cache_manifest_sha256"]
+            != file_sha256(daily / "cache_manifest.json")
+        ):
+            raise ValueError(
+                "Daily attestation lineage mismatch"
+            )
+
+    print(
+        "01: frozen public and authorized stock caches verified; "
+        "no existing raw file changed"
+    )
 
 
 def build_dataset(config,root, *, force=False):
     root=project_root(root);raw=configured_path(config,"raw_cache",root)
     stage=configured_path(config,"stock_inputs",root);stage.mkdir(parents=True,exist_ok=True)
     source=[raw/(x+".parquet") for x in ["monthly_enriched","delists","price_gap_intervals"]]
-    expected={str(p.relative_to(root)):file_sha256(p) for p in source}
+    expected = {
+    str(p.relative_to(raw)): file_sha256(p)
+    for p in source
+}
     staged=stage/"staging_manifest.json"
     valid=False
     if staged.exists():

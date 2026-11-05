@@ -7,11 +7,11 @@ import numpy as np
 import pandas as pd
 from arch import arch_model
 
-
 def garch_monthly_volatility(
     daily_returns: pd.Series,
     estimation_window: int = 756,
     forecast_horizon: int = 21,
+    distribution: str = "normal",
 ) -> pd.Series:
     """Estimate rolling GARCH(1,1) and forecast monthly volatility.
 
@@ -25,7 +25,8 @@ def garch_monthly_volatility(
 
     Returns are supplied in decimal units; arch fits percentage returns.
     """
-
+    if distribution not in {"normal", "t"}:
+        raise ValueError("distribution must be 'normal' or 't'")
     if not isinstance(daily_returns, pd.Series):
         raise TypeError("daily_returns must be a pandas Series")
     if not isinstance(daily_returns.index, pd.DatetimeIndex):
@@ -60,7 +61,7 @@ def garch_monthly_volatility(
             vol="GARCH",
             p=1,
             q=1,
-            dist="normal",
+            dist=distribution,
             rescale=False,
         )
 

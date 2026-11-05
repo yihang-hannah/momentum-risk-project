@@ -1,0 +1,3 @@
+comparison,Observations,Mean Loss Difference,HAC t-statistic,Two-sided p-value,95% CI Lower,95% CI Upper,HAC Lags
+historical_minus_ewma,989,0.0002333557815,2.503654728,0.01229179213,5.067526961e-05,0.0004160362934,3
+garch_minus_ewma,989,9.336600997e-06,0.2786954455,0.7804785581,-5.63243274e-05,7.499752939e-05,3
